@@ -9,4 +9,4 @@ Current notebooks:
  
 Upcoming:
   - XBRL restful API documentation
-  - Form specific parsing methods (10-K/Q, 13-F, etc)
+  - Form-specific parsing methods (10-K/Q, 13-F, etc)
