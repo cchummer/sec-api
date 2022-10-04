@@ -1,5 +1,5 @@
 # sec-api
-Updated 9/20/2022
+Updated 10/03/2022
 
 Current notebooks:
   - company_search_endpoint : Methods for querying the "company" search endpoint (https://www.sec.gov/cgi-bin/browse-edgar)
@@ -9,5 +9,5 @@ Current notebooks:
   - cik_ticker_lookup : Methods for quickly looking up CIK / ticker / entity name relationships
  
 Upcoming:
-  - XBRL restful API documentation
+  - XBRL RESTful API documentation
   - Form-specific parsing methods (10-K/Q, 13-F, 4, etc)
