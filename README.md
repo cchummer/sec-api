@@ -1,5 +1,5 @@
 # sec-api
-Updated 10/03/2022
+Updated 10/05/2022
 
 Current notebooks:
   - company_search_endpoint : Methods for querying the "company" search endpoint (https://www.sec.gov/cgi-bin/browse-edgar)
@@ -7,7 +7,9 @@ Current notebooks:
   - index_endpoints : Methods for parsing both the daily-index and full-index endpoints
   - submissions_restful_api : Methods for querying the "submissions" RESTful API endpoint (https://data.sec.gov/submissions)
   - cik_ticker_lookup : Methods for quickly looking up CIK / ticker / entity name relationships
+  - 13f_parsing (incomplete) : Methods for parsing 13F holdings reports
+  - 10q_k_financial_parsing (incomplete) : Methods for parsing financial data from 10Q and 10K filings
  
 Upcoming:
   - XBRL RESTful API documentation
-  - Form-specific parsing methods (10-K/Q, 13-F, 4, etc)
+  - More form-specific parsing methods
