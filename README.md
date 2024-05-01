@@ -12,6 +12,7 @@ Current notebooks:
   - 13f_parsing (incomplete) : Methods for parsing 13-F holdings reports and comparing holdings across time
   - 10q_k_financial_parsing (incomplete) : Methods for parsing financial data from 10-Q and 10-K filings
   - 10q_k_text_parsing (incomplete) : Methods for parsing text from 10-Q and 10-K filings
+  - s1_prospectus_parsing (incomplete) : Methods for parsing text from s-1 filings. Heavily based off code for 10-Q and 10-K parsing
  
 Upcoming:
   - XBRL RESTful API documentation
