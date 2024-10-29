@@ -157,7 +157,7 @@ class SECFulltextParser:
             return None  # Return None if no SEC header is found
     
     '''
-    Parses the filing's SEC header into a dictionary structure
+    Parses the filing's SEC header into a dictionary filing_info
     {  
         'type': '...',
         'date': 'YYYYMMDD',
@@ -228,15 +228,18 @@ class SECFulltextParser:
             logging.warning('Header field not found: report_period')  
             filing_info['report_period'] = None
         
-        # We try to ensure we only grab the filer / filed by company, not a subject company.
+        # We try to ensure we only grab the filer / filed by / issuer company, not a subject company.
         # Filings such as 13D/G, hold company data on both subject companies and filer companies.
         filed_by_match = re.search(r'filed by:', header_text, re.IGNORECASE)
         filer_match = re.search(r'filer:', header_text, re.IGNORECASE)
+        issuer_match = re.search(r'issuer:', header_text, re.IGNORECASE)
 
         if filed_by_match:
             remaining_text = header_text[filed_by_match.end():]  # Extract text after 'filed by:'
         elif filer_match:
             remaining_text = header_text[filer_match.end():]  # Extract text after 'filer:'
+        elif issuer_match:
+            remaining_text = header_text[issuer_match.end():]
         else:
             remaining_text = header_text  # Fallback in case neither section is present
         
@@ -402,35 +405,33 @@ class FinancialFilingParser(SECFulltextParser):
         # Find MyReports and loop through them
         summary_soup = BeautifulSoup(filingsummary, 'xml')
 
-        reports = summary_soup.find(re.compile('myreports', re.IGNORECASE))
+        reports = summary_soup.find(re.compile('myreports', flags=re.IGNORECASE))
         if not reports:
             logging.warning('Failed to find <myreports> tag for filing.')
             return reports_found
 
-        for current_report in reports.find_all(re.compile('report', re.IGNORECASE)):
+        for report in reports.find_all(re.compile(r'^(?:\w+:)?report$', flags=re.IGNORECASE)):
 
-            # The last report will not have some tags such as MenuCategory and will cause an exception trying to read it
-            try:
+            tag_regex = lambda tag: re.compile(rf'^(?:\w+:)?{tag}$', flags=re.IGNORECASE)
 
-                # Optional filter by report type/category (statements vs notes, primarily)
-                if report_category:
-                    if current_report.menucategory.text.strip().lower() != report_category.lower(): 
-                        continue
+            report_info = {}    
+            report_info['menu_category'] = report.find(tag_regex('MenuCategory')).get_text() if report.find(tag_regex('MenuCategory')) else None
+            if report_category:
+                if not report_info['menu_category']:
+                    logging.info(f'Passing on report, has no MenuCategory set but filter is set to {report_category}.')
+                    continue
+                if report_category.lower() != report_info['menu_category'].lower():
+                    logging.info(f'Passing on report, non-target menu category. Desired: {report_category.lower()}, found: {report_info["menu_category"].lower()}.')
+                    continue
 
-                # Add to list
-                report_info = {}
-                report_info['menucategory'] = current_report.menucategory.text.strip()
-                report_info['shortname'] = current_report.shortname.text.strip()
-                report_info['longname'] = current_report.longname.text.strip()
-                report_info['doc_name'] = current_report.htmlfilename.text.strip()
-                report_info['role'] = current_report.role.text.strip()
-                report_info['position'] = current_report.position.text.strip()
+            report_info['short_name'] = report.find(tag_regex('ShortName')).get_text() if report.find(tag_regex('ShortName')) else None
+            report_info['long_name'] = report.find(tag_regex('LongName')).get_text() if report.find(tag_regex('LongName')) else None
+            report_info['doc_name'] = report.find(tag_regex('HtmlFileName')).get_text() if report.find(tag_regex('HtmlFileName')) else None
+            report_info['role'] = report.find(tag_regex('Role')).get_text() if report.find(tag_regex('Role')) else None
+            report_info['position'] = report.find(tag_regex('Position')).get_text() if report.find(tag_regex('Position')) else None
 
-                reports_found.append(report_info)
-
-            # Expected to be hit, no problem    
-            except:
-                continue
+            reports_found.append(report_info)
+            logging.info(f'Found report of interest: {report_info["short_name"]}.')
 
         return reports_found
 
@@ -632,7 +633,7 @@ class FinancialFilingParser(SECFulltextParser):
         # Parse/scrape them
         for fin_report in found_reports:
 
-            logging.info(f'Parsing report: {fin_report["shortname"]}.')
+            logging.info(f'Parsing report: {fin_report["short_name"]}.')
 
             report_text = self.search_filing_for_doc_text(fin_report['doc_name'])
             if report_text:
@@ -644,13 +645,13 @@ class FinancialFilingParser(SECFulltextParser):
             # Save report info so far
             report_dict = {}
             report_dict['report_doc'] = fin_report['doc_name']
-            report_dict['report_name'] = fin_report['shortname'] 
-            report_dict['report_raw_text'] = report_text
+            report_dict['report_name'] = fin_report['short_name'] 
+            report_dict['report_raw_text'] = None
             report_dict['report_parsed_data'] = scraped_report
             try:
                 report_dict['report_title_read'] = scraped_report['headers'][0][0]
             except:
-                logging.warning(f'Unable to read report title from parsed contents. Report name: {fin_report["shortname"]}.')
+                logging.warning(f'Unable to read report title from parsed contents. Report name: {fin_report["short_name"]}.')
             
             # Save to dataframe
             report_dict['report_df'] = None
@@ -659,12 +660,12 @@ class FinancialFilingParser(SECFulltextParser):
                 try:
                     report_dict['report_df'] = report_df.to_json(orient='index')
                 except Exception as e:
-                    logging.error(f'Exception thrown writing {fin_report["shortname"]} to dictionary. Error: {e}.')
+                    logging.error(f'Exception thrown writing {fin_report["short_name"]} to dictionary. Error: {e}.')
             else:
-                logging.warning(f'Parsed report {fin_report["shortname"]} DF was returned empty. No data being saved.')
+                logging.warning(f'Parsed report {fin_report["short_name"]} DF was returned empty. No data being saved.')
 
             reports_list.append(report_dict)
-            logging.info(f'Finished parsing report {fin_report["shortname"]}.')
+            logging.info(f'Finished parsing report {fin_report["short_name"]}.')
 
         return reports_list
     
@@ -889,7 +890,7 @@ class FinancialFilingParser(SECFulltextParser):
 
                 for note in found_notes:
 
-                    logging.info(f'Parsing note to financial statement: {note["shortname"]}.')
+                    logging.info(f'Parsing note to financial statement: {note["short_name"]}.')
 
                     note_text = self.search_filing_for_doc_text(note['doc_name'])
                     if note_text:
@@ -900,13 +901,13 @@ class FinancialFilingParser(SECFulltextParser):
 
                     text_section_info = {}
                     text_section_info['section_doc'] = note['doc_name']
-                    text_section_info['section_name'] = note['shortname']
+                    text_section_info['section_name'] = note['short_name']
                     text_section_info['section_type'] = 'xbrl_note'         # Denotes difference in scraped_note format
-                    text_section_info['section_raw_text'] = note_text
+                    text_section_info['section_raw_text'] = None
                     text_section_info['section_parsed_text'] = scraped_note # Will be a dictionary
 
                     sections_list.append(text_section_info)
-                    logging.info(f'Finished parsing note: {note["shortname"]}.')
+                    logging.info(f'Finished parsing note: {note["short_name"]}.')
 
                 logging.info('Finished parsing notes to financial statements.')
         
@@ -927,7 +928,7 @@ class FinancialFilingParser(SECFulltextParser):
             doc_html = BeautifulSoup(doc_info['doc_text'].lower(), "html.parser")
 
             # Will hold results from current document
-            doc_results = {}
+            doc_sections = []
 
             logging.info(f'Parsing filing HTML document ({doc_info["doc_filename"]}) for TOC.')
 
@@ -935,17 +936,23 @@ class FinancialFilingParser(SECFulltextParser):
             # TODO: BETTER PARSING / STORING OF TABLES FOUND IN TEXT SECTIONS
             toc_tag = self.linked_toc_exists(doc_html)
             if toc_tag:
-                doc_results = self.find_sections_with_toc(doc_html, toc_tag)
+                doc_sections = self.find_sections_with_toc(doc_html, toc_tag)
             else:
-                doc_results = []
-                logging.warning('Could not find a hyperlinked TOC to crawl for text sections.')
+                logging.warning(f'Could not find a hyperlinked TOC to crawl for text sections. Parsing whole file {doc_info["doc_filename"]} as one section.')
+                sections_list.append({
+                    'section_doc': doc_info['doc_filename'],
+                    'section_name': f'doc-{doc_info["doc_filename"]}',
+                    'section_type': 'html_whole_doc',
+                    'section_raw_text': None,
+                    'section_parsed_text': doc_html.get_text(separator='\n', strip=True)
+                })
 
             # We will enforce section name uniqueness on a document level
             existing_section_names = set()
             
             # Loop through results, add to the master dict
-            if doc_results:
-                for result_section_data in doc_results:
+            if doc_sections:
+                for result_section_data in doc_sections:
 
                     logging.info(f'Parsing {doc_info["doc_filename"]} section: {result_section_data["section_name"]}')
 
@@ -968,8 +975,6 @@ class FinancialFilingParser(SECFulltextParser):
                     existing_section_names.add(section_key_name)  # Update the set with the new name
 
                     logging.info(f'Finished parsing section: {result_section_data["section_name"]}')
-            else:
-                logging.warning(f'Found no sections to parse in document {doc_info["doc_filename"]}')
 
         return sections_list
 
@@ -992,7 +997,7 @@ class FinancialFilingParser(SECFulltextParser):
     
 '''
 13F parser
-For now, returns the filing_info and a holdings report list. TODO: Add text scraping
+Returns the filing_info and a holdings report object for a 13F filing. Dict structure:
 {
     'filing_info': {
         'cik': '...',    
@@ -1011,19 +1016,57 @@ For now, returns the filing_info and a holdings report list. TODO: Add text scra
         'header_raw_text': '...',
         'filing_raw_text': '...' 
     },
-    'holdings': [
-        {
-            "issuer" : "...",
-            "class" : "com", # Or "shs class a" etc. In some cases will hold call/put along with optiontype
-            "cusip" : "...",
-            "figi" : "openfigi_id",
-            "value" : "value_in_thousands",
-            "amount" : "num_of_security_owned",
-            "amttype" : "sh/prn",
-            "optiontype" : "call/put" # Optional, obviously
+    'holdings_report': {
+        'report_yr_quarter': '...',
+        'amendment': {
+            'is_amendment': '...',
+            'amendment_no': '...',
+            'amendment_type': '...'
         },
-        ...
-    ]
+        'filing_mgr_name': '...',
+        'filing_mgr_addr': '...',
+        'report_type': '...',
+        'form13f_filenum': '...',
+        'sec_filenum': '...',
+        'info_instruction5': '...',
+        'sig_name': '...',
+        'sig_title': '...',
+        'sig_phone': '...',
+        'sic_loc': '...',
+        'sig_date': '...',
+        'other_mgrs_count': '...',
+        'it_entries_count': '...'
+        'it_value_total': '...',
+        'other_mgrs': [
+            {
+                'mgr_seq': '...',
+                'mgr_cik': '...',
+                'mgr_13f_filenum': '...',
+                'mgr_sec_filenum': '...',
+                'mgr_crd_num': '...',
+                'mgr_name': '...'
+            },
+            ...
+        ],
+        'it_entries': [
+            {
+                "issuer" : "APPLE INC",
+                "class" : "COM", # Or "SHS CLASS A" etc. In some cases will hold CALL/PUT along with optiontype
+                "cusip" : "CUSIP",
+                "value" : "VALUE_IN_THOUSANDS",
+                "amount" : "NUM_OF_SECURITY_OWNED",
+                "amt_type" : "SH/PRN",
+                "discretion": "",
+                "sole_vote": "",
+                "shared_vote": "",
+                "no_vote": "",
+                "figi" : "OPENFIGI_ID",
+                "other_manager": "",
+                "option_type" : "" # "CALL/PUT"
+            },
+            ...
+        ]
+    }
 }
 '''
 class HR13FParser(FinancialFilingParser):
@@ -1032,7 +1075,65 @@ class HR13FParser(FinancialFilingParser):
         # Init self.filing_info, financial_statements, and text_sections
         super().__init__(fulltext) 
         
-        self.holdings_report_entries = [] 
+        self.holdings_report_info = {} 
+    
+    # Helper function to concat address components
+    def format_address(self, street1, street2, city, state, zip_code):
+
+        if street2:
+            return f'{street1}, {street2}, {city}, {state}, {zip_code}' if all([street1, city, state, zip_code, street2]) else None
+        else:
+            return f'{street1}, {city}, {state}, {zip_code}' if all([street1, city, state, zip_code]) else None
+    
+    # Parses the cover and summary page of a 13F filing, holding fund manager information
+    def parse_primary_doc_xml(self, doc_content):
+
+        soup = BeautifulSoup(doc_content, 'xml')
+
+        holding_info = {
+            'report_yr_quarter': soup.find(re.compile(r'reportCalendarOrQuarter')).text.strip() if soup.find(re.compile(r'reportCalendarOrQuarter')) else None,
+            'amendment': {
+                'is_amendment': soup.find(re.compile(r'isAmendment')).text.strip() if soup.find(re.compile(r'isAmendment')) else None,
+                'amendment_no': soup.find(re.compile(r'amendmentNo')).text.strip() if soup.find(re.compile(r'amendmentNo')) else None,
+                'amendment_type': soup.find(re.compile(r'amendmentType')).text.strip() if soup.find(re.compile(r'amendmentType')) else None  
+            },
+            'filing_mgr_name': soup.find(re.compile(r'filingManager')).find(re.compile(r'name')).text.strip() if soup.find(re.compile(r'filingManager')) else None,
+            'filing_mgr_addr': self.format_address(
+                street1=soup.find(re.compile(r'street1')).text.strip() if soup.find(re.compile(r'street1')) else None,
+                street2=soup.find(re.compile(r'street2')).text.strip() if soup.find(re.compile(r'street2')) else None,
+                city=soup.find(re.compile(r'city')).text.strip() if soup.find(re.compile(r'city')) else None,
+                state=soup.find(re.compile(r'stateOrCountry')).text.strip() if soup.find(re.compile(r'stateOrCountry')) else None,
+                zip_code=soup.find(re.compile(r'zipCode')).text.strip() if soup.find(re.compile(r'zipCode')) else None
+            ),
+            'report_type': soup.find(re.compile(r'reportType')).text.strip() if soup.find(re.compile(r'reportType')) else None,
+            'form13f_filenum': soup.find(re.compile(r'form13FFileNumber')).text.strip() if soup.find(re.compile(r'form13FFileNumber')) else None,
+            'sec_filenum': soup.find(re.compile(r'secFileNumber')).text.strip() if soup.find(re.compile(r'secFileNumber')) else None,
+            'info_instruction5': soup.find(re.compile(r'provideInfoForInstruction5')).text.strip() if soup.find(re.compile(r'provideInfoForInstruction5')) else None,
+            'sig_name': soup.find(re.compile(r'signatureBlock')).find(re.compile(r'name')).text.strip() if soup.find(re.compile(r'signatureBlock')) else None,
+            'sig_title': soup.find(re.compile(r'signatureBlock')).find(re.compile(r'title')).text.strip() if soup.find(re.compile(r'signatureBlock')) else None,
+            'sig_phone': soup.find(re.compile(r'signatureBlock')).find(re.compile(r'phone')).text.strip() if soup.find(re.compile(r'signatureBlock')) else None,
+            'sic_loc': soup.find(re.compile(r'signatureBlock')).find(re.compile(r'stateOrCountry')).text.strip() if soup.find(re.compile(r'signatureBlock')) else None,
+            'sig_date': soup.find(re.compile(r'signatureDate')).text.strip() if soup.find(re.compile(r'signatureDate')) else None,
+            'other_mgrs_count': soup.find(re.compile(r'otherIncludedManagersCount')).text.strip() if soup.find(re.compile(r'otherIncludedManagersCount')) else None,
+            'it_entries_count': soup.find(re.compile(r'tableEntryTotal')).text.strip() if soup.find(re.compile(r'tableEntryTotal')) else None,
+            'it_value_total': soup.find(re.compile(r'tableValueTotal')).text.strip() if soup.find(re.compile(r'tableValueTotal')) else None,
+            'other_mgrs': []
+        }
+
+        # Extract other managers information
+        other_mgrs_info = soup.find_all(re.compile(r'otherManager2'))
+        for mgr in other_mgrs_info:
+            holding_info['other_mgrs'].append({
+                'mgr_seq': mgr.find(re.compile(r'sequenceNumber')).text.strip() if mgr.find(re.compile(r'sequenceNumber')) else None,
+                'mgr_cik': mgr.find(re.compile(r'cik')).text.strip() if mgr.find(re.compile(r'cik')) else None,
+                'mgr_13f_filenum': mgr.find(re.compile(r'form13FFileNumber')).text.strip() if mgr.find(re.compile(r'form13FFileNumber')) else None,
+                'mgr_sec_filenum': mgr.find(re.compile(r'secFileNumber')).text.strip() if mgr.find(re.compile(r'secFileNumber')) else None,
+                'mgr_crd_num': mgr.find(re.compile(r'crdNumber')).text.strip() if mgr.find(re.compile(r'crdNumber')) else None,
+                'mgr_name': mgr.find(re.compile(r'name')).text.strip() if mgr.find(re.compile(r'name')) else None
+            })
+
+        return holding_info
+
     
     # Helper to below function. Extracts the holding information from one infotable element of a 13F-HR information table
     def extract_holding_from_soup(self, position_soup):
@@ -1040,23 +1141,39 @@ class HR13FParser(FinancialFilingParser):
         "issuer": "",
         "class": "",
         "cusip": "",
-        "figi": "",
         "value": "",
         "amount": "",
-        "amttype": "",
-        "optiontype": ""
+        "amt_type": "",
+        "discretion": "",
+        "sole_vote": "",
+        "shared_vote": "",
+        "no_vote": "",
+        "figi": "",
+        "other_mgr": "",
+        "option_type": ""
         }
         try:
             holding["issuer"] = position_soup.find(re.compile('nameofissuer')).text.strip()
             holding["class"] = position_soup.find(re.compile('titleofclass')).text.strip()
             holding["cusip"] = position_soup.find(re.compile('cusip')).text.strip()
-            holding["figi"] = position_soup.find(re.compile('figi')).text.strip()
             holding["value"] = position_soup.find(re.compile('value')).text.strip()
             holding["amount"] = position_soup.find(re.compile('sshprnamt')).text.strip()
-            holding["amttype"] = position_soup.find(re.compile('sshprnamttype')).text.strip()
-            cur_optiontype = position_soup.find(re.compile('putcall'))
-            if cur_optiontype:
-                holding["optiontype"] = cur_optiontype.text.strip()
+            holding["amt_type"] = position_soup.find(re.compile('sshprnamttype')).text.strip()
+            holding["discretion"] = position_soup.find(re.compile('investmentdiscretion')).text.strip()
+
+            vote_auth = position_soup.find(re.compile('votingauthority'))
+            if vote_auth:
+                holding["sole_vote"] = vote_auth.find(re.compile('sole')).text.strip()
+                holding['shared_vote'] = vote_auth.find(re.compile('shared')).text.strip()
+                holding['no_vote'] = vote_auth.find(re.compile('none')).text.strip()
+            else:
+                logging.error('Failed to find voting authority XML element for holding entry, which should be mandatory.')
+
+            # Optional
+            holding['figi'] = position_soup.find(re.compile('figi')).text.strip() if position_soup.find(re.compile('figi')) else ''
+            holding['other_mgr'] = position_soup.find(re.compile('othermanager')).text.strip() if position_soup.find(re.compile('othermanager')) else ''
+            holding['option_type'] = position_soup.find(re.compile('putcall')).text.strip() if position_soup.find(re.compile('putcall')) else ''
+        
         except AttributeError as e:
             logging.warning(f"Error extracting holding details: {e}. Holding data may be incomplete.") 
         
@@ -1072,7 +1189,7 @@ class HR13FParser(FinancialFilingParser):
         
         # Prepare content for lxml
         try:
-            doc_cont = doc_dict['doc_text'].lower().replace('<xml>', '').replace('</xml>', '')
+            doc_cont = re.sub(r'</?xml>', '', doc_dict['doc_text'], flags=re.IGNORECASE)
         except Exception as e:
             logging.error(f'Failed to prepare information table document text for parsing. Error: {e}.')
             return parsed_holdings
@@ -1093,57 +1210,55 @@ class HR13FParser(FinancialFilingParser):
         
         # Extract formatted holdings info 
         parsed_holdings = [self.extract_holding_from_soup(position) for position in positions_list]
-        for holding in parsed_holdings:
-            for key in holding:
-                holding[key] = holding[key].lower() # Lowercase values
+        #for holding in parsed_holdings:
+            #for key in holding:
+                #holding[key] = holding[key].lower() # Lowercase values
 
         return parsed_holdings
     
-    """
-    This method returns a list of holdings (each its own dictionary) that are found 
-    in information tables of the given 13F-HR.
-
-    List structure: [
-        {
-            "issuer" : "APPLE INC",
-            "class" : "COM", # Or "SHS CLASS A" etc. In some cases will hold CALL/PUT along with optiontype
-            "cusip" : "CUSIP",
-            "figi" : "OPENFIGI_ID",
-            "value" : "VALUE_IN_THOUSANDS",
-            "amount" : "NUM_OF_SECURITY_OWNED",
-            "amttype" : "SH/PRN",
-            "optiontype" : "" # "CALL/PUT"
-        },
-        {
-            ...
-        }
-        ...
-    ]
-    """
+    # Parses a 13F filing for manager and holdings info, returns a dictionary object
     def pull_holdings_from_fulltext(self):
 
-        found_holdings = []
-        
-        # Look for document of type 
+        # Locate primary document (cover + summary page)
+        primary_doc_text = ''
         filing_docs = self.split_filing_documents()
         for doc in filing_docs:
             try:
-                if doc['doc_type'].lower() == 'information table':
-                    logging.info(f'Found information table document {doc["doc_filename"]}. Going to attempt to parse.')
-                    found_holdings = self.parse_information_table(doc)
-                    if not found_holdings:
-                        logging.warning(f'Failed to extract any holdings from document {doc["doc_filename"]}.')
+                if (doc['doc_type'].lower().startswith('13f-')) and (doc['doc_filename'].lower().endswith('.xml')):
+                    logging.info(f'Found primary XML document of holdings report: {doc["doc_filename"]}.')
+                    primary_doc_text = re.sub(r'</?xml>', '', doc['doc_text'], flags=re.IGNORECASE)
                     break
-            except Exception as e:
-                logging.error(f'Exception attempting to read or parse the current filing document: {doc["doc_filename"]}. Error: {e}.')
+            except KeyError as e:
+                logging.error(f'Incomplete document dict was returned from split_filing_documents() to pull_holdings_from_fulltext(). Error: {e}.')
 
-        return found_holdings
+        if not primary_doc_text:
+            logging.error('Failed to find 13F primary document.')
+            return None
+        
+        # Parse it
+        hr_dict = self.parse_primary_doc_xml(primary_doc_text)
+        if not hr_dict:
+            logging.error('Failed to parse 13F primary document XML. Will still attempt info table.')
+        else:
+            logging.info('Parsed 13F primary doc, now looking for info table.')
+
+        # Other main piece of 13F's is the information table, which contains holdings information
+        hr_dict['it_entries'] = []
+        filing_docs = self.split_filing_documents()
+        for doc in filing_docs:
+            if (doc['doc_type'].lower() == 'information table') and (doc['doc_filename'].lower().endswith('.xml')):
+                
+                logging.info(f'Found information table document {doc["doc_filename"]}. Going to attempt to parse.')
+                hr_dict['it_entries'] = self.parse_information_table(doc)
+                if not hr_dict['it_entries']:
+                    logging.warning(f'Failed to extract any holdings from document {doc["doc_filename"]}.')
+                break
+
+        return hr_dict
     
-    # Main class functionality is provided here
     def full_parse(self):
 
-        self.holdings_report_entries = self.pull_holdings_from_fulltext()
-        # TODO: Parse text from cover page etc
+        self.holdings_report_info = self.pull_holdings_from_fulltext()
 
         logging.info('Returning from full_parse() in HR13FParser.')
 
@@ -1152,41 +1267,544 @@ class HR13FParser(FinancialFilingParser):
     def construct_parsed_output(self):
         return {
             'filing_info': self.filing_info,
-            'financial_statements': self.financial_statements,
-            'text_sections': self.text_sections,
-            'holdings': self.holdings_report_entries
+            'holdings_report': self.holdings_report_info
         }
     
     def __repr__(self):
         return 'HR13FParser'
     
-# 13D and 13G parser
+'''
+13D and 13G parser
+'''
 class HR13GParser(FinancialFilingParser):
 
     def __repr__(self):
         return 'HR13GParser'
     
-# S1 and S3 parser
+'''
+S1 and S3 parser
+For now just focusing on text. TODO: Organize any financial data found within
+{
+    'filing_info': {
+        'cik': '...',    
+        'type': '...',
+        'date': 'YYYYMMDD',
+        'accession_numer': '...',
+        'company_name': '...',
+        'sic_code': '...',
+        'sic_desc': '...',
+        'report_period': 'YYYYMMDD',
+        'state_of_incorp': '...',
+        'fiscal_yr_end': 'MMDD',
+        'business_address': 'ADDRESS, CITY, STATE, ZIP',
+        'business_phone': '...',
+        'name_changes': [{...},...]
+        'header_raw_text': '...',
+        'filing_raw_text': '...' 
+    },
+    'text_sections': [
+        {
+            'section_doc': '...',
+            'section_name': '...',
+            'section_type': '...',
+            'section_raw_text': '...',
+            'section_parsed_text': '...'
+        },
+        ...
+    ]
+}
+'''
 class ProspectusParser(FinancialFilingParser):
 
+    def full_parse(self):
+        self.text_sections = self.parse_text_sections()
+        return self.construct_parsed_output()
+    
+    def construct_parsed_output(self):
+        return {
+            'filing_info': self.filing_info,
+            'text_sections': self.text_sections
+        }
+    
     def __repr__(self):
         return 'ProspectusParser'
 
-# 8-K parser
+'''
+8-K parser
+Returns filing_info, event_info, and text_section fields:
+{
+    'filing_info': {
+        'cik': '...',    
+        'type': '...',
+        'date': 'YYYYMMDD',
+        'accession_numer': '...',
+        'company_name': '...',
+        'sic_code': '...',
+        'sic_desc': '...',
+        'report_period': 'YYYYMMDD',
+        'state_of_incorp': '...',
+        'fiscal_yr_end': 'MMDD',
+        'business_address': 'ADDRESS, CITY, STATE, ZIP',
+        'business_phone': '...',
+        'name_changes': [{...},...]
+        'header_raw_text': '...',
+        'filing_raw_text': '...' 
+    },
+    'event_info': {
+        'items_listed': [],
+        ...
+    }
+    'text_sections': [
+        {
+            'section_doc': '...',
+            'section_name': '...',
+            'section_type': '...',
+            'section_raw_text': '...',
+            'section_parsed_text': '...'
+        },
+        ...
+    ]
+}
+'''
 class Event8KParser(FinancialFilingParser):
+    
+    def __init__(self, fulltext):
+        # Init self.filing_info, financial_statements, and text_sections
+        super().__init__(fulltext) 
 
+        self.event_info = {}
+    
+    # Reads information from the HTML of an 8-K filing cover page. Data is XBRL formatted, but I just parse the HTML. Returns a dictionary structure.
+    def read_8k_cover_page(self, cover_content):
+        
+        soup = BeautifulSoup(cover_content, 'html.parser')
+
+        # Find the table with class "report"
+        table = soup.find('table', class_='report')
+        table_data = {}
+
+        # Iterate rows
+        for row in table.find_all('tr'):
+
+            # First cell is field name
+            field_name_cell = row.find('td', class_='pl')
+            # Second one is the value
+            value_cell = row.find('td', class_='text')
+
+            if field_name_cell and value_cell:
+
+                field_name = field_name_cell.get_text(strip=True)
+                field_value = value_cell.get_text(strip=True)
+
+                table_data[field_name] = field_value
+
+        return table_data
+    
+    # Parses the SEC header and XBRL cover report for a couple values of interest
+    def parse_8k_header(self):
+
+        logging.info('Parsing 8-K header.')        
+        event_info = {}
+        
+        # Parse SEC header for info about items present in filing
+        sec_header = self.filing_info['header_raw_text']
+        header_item_pattern = r'ITEM INFORMATION:\s+([^\n]+)'
+
+        event_info['items_listed'] = re.findall(header_item_pattern, sec_header, re.IGNORECASE)
+
+        logging.info('Parsed header for items list, now looking for XBRL cover report.')
+
+        # Find filing summary -> XBRL reports
+        reports_summary = self.search_filing_for_doc_text('filingsummary.xml')
+        if not reports_summary:
+            logging.warning('No FilingSummary.xml was found in 8-K fulltext.')
+            return event_info
+        
+        cover_reports = self.list_xbrl_reports(reports_summary, report_category='cover')
+        if not cover_reports:
+            logging.warning('No cover reports found in FilingSummary.xml.')
+            return event_info
+        
+        # Parse cover report
+        for cover_report in cover_reports:
+            logging.info(f'Targetting 8-K cover report: {cover_report["doc_name"]}.')
+
+            report_text = self.search_filing_for_doc_text(cover_report['doc_name'])
+            if report_text:
+                report_text = re.sub(r'</?html>', '', report_text, flags=re.IGNORECASE)
+                parsed_cover = self.read_8k_cover_page(report_text)
+
+                if not parsed_cover:
+                    logging.error('Failed to parse 8-K cover page.')
+                else:
+                    for key in parsed_cover:
+                        event_info[key] = parsed_cover[key]
+                    logging.info('Parsed 8-K cover report.')
+                    break # Should only be one cover page... break after we successfully parse
+
+        return event_info
+    
+    # Parses the main html file of an 8-K for any present items (see 8-K format / item no. meanings on SEC website)
+    def parse_8k_items(self, doc_name, doc_content):
+
+        soup = BeautifulSoup(doc_content, 'html.parser')
+
+        # Regex pattern to match item headers
+        item_pattern = re.compile(r'Item \d+\.\d+')
+
+        # List to store the results
+        results = []
+
+        # Variables to track the current item and its content
+        current_item = None
+        current_content = ""
+
+        # Iterate through relevant HTML elements
+        for element in soup.find_all(['p', 'span']):
+            text = element.get_text(strip=True)
+
+            # Check if the text matches the item pattern. AKA we have hit a new 'Item'
+            if item_pattern.match(text):
+
+                # If we were parsing a previous item, save it
+                if current_item:
+                    item_section = {
+                        'section_doc': doc_name,
+                        'section_name': current_item,
+                        'section_type': '8k_item_section',
+                        'section_raw_text': None,
+                        'section_parsed_text': current_content.strip() 
+                    }
+                    results.append(item_section)
+                    logging.info(f'Finished scraping item section: {current_item}. Found another item after.')
+
+                # Update the current item and reset content
+                current_item = text
+                current_content = ""  # Reset for new item content
+                logging.info(f'Found item section: {current_item}. Scraping it.')
+
+            # Check for the keyword "signature(s)" to stop capturing
+            elif text.lower() in ['signatures', 'signature']:
+                if current_item:
+                    item_section = {
+                        'section_doc': doc_name,
+                        'section_name': current_item,
+                        'section_type': '8k_item_section',
+                        'section_raw_text': None,
+                        'section_parsed_text': current_content.strip() 
+                    }
+                    results.append(item_section)
+                    current_item = None
+                    logging.info(f'Finished scraping item section: {current_item}. Ran into signature block.')
+                break  # Exit the loop 
+
+            # If it's content, append to current_content
+            else:
+                current_content += text + " "  # Append with a space for separation
+
+        # Final check to save any leftover item content (didn't trigger signature match)
+        if current_item:
+            item_section = {
+                        'section_doc': doc_name,
+                        'section_name': current_item,
+                        'section_type': '8k_item_section',
+                        'section_raw_text': None,
+                        'section_parsed_text': current_content.strip() 
+            }
+            results.append(item_section)
+            logging.info(f'Finished scraping item section: {current_item}. Hit final check at end of document.')
+
+        return results
+
+    # Parses HTM exhibit files of 8-K filings, for now just for text content
+    def parse_8k_exhibit(self, doc_name, doc_content):
+        
+        soup = BeautifulSoup(doc_content, 'html.parser')
+
+        if not soup:
+            logging.error(f'Invalid html content passed to 8-K exhibit parser. Document name: {doc_name}.')
+            return None
+        
+        all_text = soup.get_text(separator='\n', strip=True)
+        return {
+            'section_doc': doc_name,
+            'section_name': f'exhibit-{doc_name}',
+            'section_type': '8k_exhibit_section',
+            'section_raw_text': None,
+            'section_parsed_text': all_text
+        }
+    
+    # Parses 8-k filing fulltext for text sections, returning a list for use as 'text_sections' in final output structure (see FinancialFilingParser)
+    def pull_8k_items_exs(self):
+
+        logging.info('Parsing 8-K filing for items and exhibits.')
+        
+        # Locate 8-K html file, grab contents (item numbers and their text)
+        target_doc_name = ''
+        target_doc_text = ''
+        filing_docs = self.split_filing_documents()
+        for doc in filing_docs:
+            try:
+                if (doc['doc_type'].lower() == '8-k' or doc['doc_type'].lower() == '8-k/a') and (doc['doc_filename'].lower().endswith('.htm')):
+                    logging.info(f'Found 8-K htm file: {doc["doc_filename"]}.')
+                    target_doc_name = doc['doc_filename']
+                    target_doc_text = re.sub(r'</?xbrl>', '', doc['doc_text'], flags=re.IGNORECASE)
+            except KeyError as e:
+                logging.error(f'Incomplete document dict was returned from split_filing_documents() to pull_8k_items_exs(). Error: {e}.')
+
+        if not target_doc_text:
+            logging.error('Failed to find 8-K htm file.')
+            return None
+        
+        text_sections = self.parse_8k_items(target_doc_name, target_doc_text)
+
+        logging.info('Parsed 8-K item sections, now looking for exhibits.')
+
+        # Other documents of interest are exhibits, document type r'EX-\d+\.\d+'
+        filing_docs = self.split_filing_documents()
+        for doc in filing_docs:
+            try:
+                if (re.fullmatch(r'ex-\d+\.\d+', doc['doc_type'].lower()) and (doc['doc_filename'].lower().endswith('.htm'))):
+                    logging.info(f'Found 8-K exhibit file: {doc["doc_filename"]}.')
+                    
+                    ex_doc_text = re.sub(r'</?html>', '', doc['doc_text'], flags=re.IGNORECASE)
+                    text_sections.append(self.parse_8k_exhibit(doc['doc_filename'], ex_doc_text))
+                    logging.info('Parsed exhibit file.')
+            except KeyError as e:
+                logging.error(f'Incomplete document was returned from split_filing_documents to 8-K parser looking for exhibits. Error: {e}.')
+
+        return text_sections
+
+    def full_parse(self):
+       
+       self.event_info = self.parse_8k_header()
+       self.text_sections = self.pull_8k_items_exs()
+
+       # TODO: Grab / organize financial data and tables
+
+       logging.info('Returning from full_parse in Event8KParser.')
+
+       return self.construct_parsed_output()
+   
+    def construct_parsed_output(self):
+       return {
+           'filing_info': self.filing_info,
+           'event_info': self.event_info,
+           'text_sections': self.text_sections
+       }
+   
     def __repr__(self):
         return 'Event8KParser'
     
-# Form 4 parser
+'''
+Form 4 parser. Returns a dictionary object containing insider transaction info
+{
+    'filing_info': {
+        'cik': '...',    
+        'type': '...',
+        'date': 'YYYYMMDD',
+        'accession_numer': '...',
+        'company_name': '...',
+        'sic_code': '...',
+        'sic_desc': '...',
+        'report_period': 'YYYYMMDD',
+        'state_of_incorp': '...',
+        'fiscal_yr_end': 'MMDD',
+        'business_address': 'ADDRESS, CITY, STATE, ZIP',
+        'business_phone': '...',
+        'name_changes': [{...},...]
+        'header_raw_text': '...',
+        'filing_raw_text': '...' 
+    },
+    'insider_trans': {
+        'issuer_info': {
+        },
+        'owner_info': [],
+        'trans': [],
+        'footnotes': {
+        },
+        'sigs': {
+        }
+    }
+}
+'''
 class Form4Parser(FinancialFilingParser):
 
+    def __init__(self, fulltext):
+        super().__init__(fulltext)
+        self.insider_trans = {}
+    
+    # Helper to below, testing a new way of handling optional XML namespaces
+    def find_element_ext(self, p_soup, ns, tag_name):
+        return p_soup.find(f'{ns}{tag_name}') or p_soup.find(tag_name)
+    
+    # Construct insider_trans dict object
+    def parse_form4_xml(self, xml_content):
+        
+        soup = BeautifulSoup(xml_content, 'xml')
+
+        # Extract namespace dynamically if present
+        namespace = ''
+        if soup.ownershipDocument and soup.ownershipDocument.attrs:
+            for attr, value in soup.ownershipDocument.attrs.items():
+                if attr.startswith("xmlns"):
+                    namespace = f"{{{value}}}"  # Namespace format for BeautifulSoup with `{}`
+
+        # Extract Issuer information
+        issuer = {
+            "issuerCik": self.find_element_ext(soup, namespace, "issuerCik").text if self.find_element_ext(soup, namespace, "issuerCik") else None,
+            "issuerName": self.find_element_ext(soup, namespace, "issuerName").text if self.find_element_ext(soup, namespace, "issuerName") else None,
+            "issuerTradingSymbol": self.find_element_ext(soup, namespace, "issuerTradingSymbol").text if self.find_element_ext(soup, namespace, "issuerTradingSymbol") else None
+        }
+        logging.info(f'Parsed Form 4 issuer info: {issuer}')
+
+        # Extract Reporting Owner information
+        reporting_owners = []
+        for owner in soup.find_all(f"{namespace}reportingOwner") or soup.find_all("reportingOwner"):
+            owner_info = {
+                "ownerCik": self.find_element_ext(owner, namespace, "rptOwnerCik").text if self.find_element_ext(owner, namespace, "rptOwnerCik") else None,
+                "ownerName": self.find_element_ext(owner, namespace, "rptOwnerName").text if self.find_element_ext(owner, namespace, "rptOwnerName") else None,
+                "ownerCity": self.find_element_ext(owner, namespace, "rptOwnerCity").text if self.find_element_ext(owner, namespace, "rptOwnerCity") else None,
+                "ownerState": self.find_element_ext(owner, namespace, "rptOwnerState").text if self.find_element_ext(owner, namespace, "rptOwnerState") else None,
+                "isOfficer": self.find_element_ext(owner, namespace, "isOfficer").text if self.find_element_ext(owner, namespace, "isOfficer") else None,
+                "officerTitle": self.find_element_ext(owner, namespace, "officerTitle").text if self.find_element_ext(owner, namespace, "officerTitle") else None
+            }
+            reporting_owners.append(owner_info)
+        logging.info(f'Parsed Form 4 reporting owner info: {reporting_owners}')
+
+        # Extract Non-Derivative Transactions
+        # (Helper function to get .text, with nested <value> handling)
+        def get_value_text(element, default=None):
+            if element:
+                value_elem = element.find("value")
+                return value_elem.text if value_elem else element.text
+            return default
+
+        # Extract Non-Derivative Transactions
+        non_derivative_transactions = []
+        for transaction in soup.find_all(f"{namespace}nonDerivativeTransaction") or soup.find_all("nonDerivativeTransaction"):
+            trans_info = {
+                "securityTitle": get_value_text(self.find_element_ext(transaction, namespace, "securityTitle")),
+                "transactionDate": get_value_text(self.find_element_ext(transaction, namespace, "transactionDate")),
+                "transactionCode": self.find_element_ext(transaction, namespace, "transactionCode").text if self.find_element_ext(transaction, namespace, "transactionCode") else None,
+                "transactionShares": get_value_text(self.find_element_ext(transaction, namespace, "transactionShares")),
+                "transactionPricePerShare": get_value_text(self.find_element_ext(transaction, namespace, "transactionPricePerShare")),
+                "transactionAcquiredDisposedCode": get_value_text(self.find_element_ext(transaction, namespace, "transactionAcquiredDisposedCode")),
+                "sharesOwnedFollowingTransaction": get_value_text(self.find_element_ext(transaction, namespace, "sharesOwnedFollowingTransaction")),
+                "directOrIndirectOwnership": get_value_text(self.find_element_ext(transaction, namespace, "directOrIndirectOwnership"))
+            }
+            non_derivative_transactions.append(trans_info)
+        logging.info(f'Parsed Form 4 non-derivative transactions.')
+
+        # TODO: Non-Deriv Holdings, Deriv Trans + Holdings
+
+        # Extract Footnotes
+        footnotes = {}
+        for footnote in soup.find_all(f"{namespace}footnote") or soup.find_all("footnote"):
+            footnotes[footnote['id']] = footnote.text.strip()
+        logging.info('Parsed Form 4 footnotes.')
+
+        # Extract Signature Information
+        signature = {
+            "signatureName": self.find_element_ext(soup, namespace, "signatureName").text if self.find_element_ext(soup, namespace, "signatureName") else None,
+            "signatureDate": self.find_element_ext(soup, namespace, "signatureDate").text if self.find_element_ext(soup, namespace, "signatureDate") else None
+        }
+        logging.info(f'Parsed Form 4 signatures: {signature}')
+
+        return {
+            'issuer_info': issuer,
+            'owner_info': reporting_owners,
+            'trans': non_derivative_transactions,
+            'footnotes': footnotes,
+            'sigs': signature
+        }
+   
+    def parse_insider_action(self):
+        
+        # Find primary XML document
+        primary_doc_text = ''
+        filing_docs = self.split_filing_documents()
+        for doc in filing_docs:
+            try:
+                if (doc['doc_type'] == '4' or doc['doc_type'].lower() == '4/a') and (doc['doc_filename'].lower().endswith('.xml')):
+                    logging.info(f'Found primary XML document of Form 4: {doc["doc_filename"]}.')
+                    primary_doc_text = re.sub(r'</?xml>', '', doc['doc_text'], flags=re.IGNORECASE)
+                    break
+            except KeyError as e:
+                logging.error(f'Incomplete document dict was returned from split_filing_documents() to parse_insider_action(). Error: {e}.')
+
+        if not primary_doc_text:
+            logging.error('Failed to find Form 4 primary document.')
+            return None
+        
+        insider_trans = self.parse_form4_xml(primary_doc_text)
+        if not insider_trans:
+            logging.error('Failed to parse Form 4 document XML. insider_trans will be empty.')
+        else:
+            logging.info('Parsed Form 4 primary document.')
+
+        return insider_trans
+    
+    def full_parse(self):
+        
+        self.insider_trans = self.parse_insider_action()
+        return self.construct_parsed_output()
+    
+    def construct_parsed_output(self):
+        return {
+            'filing_info': self.filing_info,
+            'insider_trans': self.insider_trans
+        }
+    
     def __repr__(self):
         return 'Form4Parser'
 
-# Proxy statement parser
+'''
+Proxy statement (DEF 14A) parser
+For now focus on text content from HTML files. 
+{
+    'filing_info': {
+        'cik': '...',    
+        'type': '...',
+        'date': 'YYYYMMDD',
+        'accession_numer': '...',
+        'company_name': '...',
+        'sic_code': '...',
+        'sic_desc': '...',
+        'report_period': 'YYYYMMDD',
+        'state_of_incorp': '...',
+        'fiscal_yr_end': 'MMDD',
+        'business_address': 'ADDRESS, CITY, STATE, ZIP',
+        'business_phone': '...',
+        'name_changes': [{...},...]
+        'header_raw_text': '...',
+        'filing_raw_text': '...' 
+    },
+    'text_sections': [
+        {
+            'section_doc': '...',
+            'section_name': '...',
+            'section_type': '...',
+            'section_raw_text': '...',
+            'section_parsed_text': '...'
+        },
+        ...
+    ]
+}
+'''
 class ProxyParser(FinancialFilingParser):
 
+    def full_parse(self):
+
+        self.text_sections = self.parse_text_sections()
+        return self.construct_parsed_output()
+    
+    def construct_parsed_output(self):
+        return {
+            'filing_info': self.filing_info,
+            'text_sections': self.text_sections
+        }
+    
     def __repr__(self):
         return 'ProxyParser'
     
