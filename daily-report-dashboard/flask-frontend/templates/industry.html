@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Industry Summary: {{ sic_summary.sic_desc }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Industry Summary: {{ sic_summary.sic_desc }}</h1>
+        <nav>
+            <a href="{{ url_for('routes.home') }}">Home</a>
+        </nav>
+    </header>
+
+    <section id="industry-summary">
+        <h2>Daily Filings for SIC {{ sic_summary.sic_code }}: {{ sic_summary.sic_desc }}</h2>
+        <p>Total Filings Today: {{ sic_summary.total_filings }}</p>
+
+        <div class="summary-section">
+            <!-- Filings by Type -->
+            <div class="summary-column">
+                <h3>Filings by Type:</h3>
+                <p>Total # Types: {{ sic_summary.by_type | length }}</p>
+                <ul>
+                    {% if sic_summary.by_type %}
+                        {% for type_dict in sic_summary.by_type[:10] %}
+                            <li>
+                                <strong>{{ type_dict.type }}</strong>: {{ type_dict.count }} 
+                                ({{ '%.2f' | format((type_dict.count / sic_summary.total_filings) * 100) }}%)
+                            </li>
+                        {% endfor %}
+                    {% else %}
+                        <li>No data available</li>
+                    {% endif %}
+                </ul>
+                <span class="collapsible-list" onclick="toggleContent('industryTypes')">Show All</span>
+                <ul id="industryTypes" class="content">
+                    {% for type_dict in sic_summary.by_type %}
+                        <li>
+                            <strong>{{ type_dict.type }}</strong>: {{ type_dict.count }} 
+                            ({{ '%.2f' | format((type_dict.count / sic_summary.total_filings) * 100) }}%)
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <!-- Filings by Company -->
+            <div class="summary-column">
+                <h3>Filings by Company:</h3>
+                <p>Total # Companies/Filers: {{ sic_summary.by_company | length }}</p>
+                <ul>
+                    {% if sic_summary.by_company %}
+                        {% for company_dict in sic_summary.by_company[:10] %}
+                            <li>
+                                <strong>{{ company_dict.company_name }}</strong>: {{ company_dict.count }} 
+                                ({{ '%.2f' | format((company_dict.count / sic_summary.total_filings) * 100) }}%)
+                            </li>
+                        {% endfor %}
+                    {% else %}
+                        <li>No data available</li>
+                    {% endif %}
+                </ul>
+                <span class="collapsible-list" onclick="toggleContent('industryCompanies')">Show All</span>
+                <ul id="industryCompanies" class="content">
+                    {% for company_dict in sic_summary.by_company %}
+                        <li>
+                            <strong>{{ company_dict.company_name }}</strong>: {{ company_dict.count }} 
+                            ({{ '%.2f' | format((company_dict.count / sic_summary.total_filings) * 100) }}%)
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
+</body>
+</html>

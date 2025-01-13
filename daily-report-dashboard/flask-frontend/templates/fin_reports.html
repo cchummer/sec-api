@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Financial Reports</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+    <header>
+        <h1>Financial Reports: {{ filing_type }}</h1>
+        <nav>
+            <a href="{{ url_for('routes.home') }}">Home</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        <h1>Financial Reports: {{ filing_type }}</h1>
+        <!-- Accordion for Industries -->
+        <div class="accordion" id="industryAccordion">
+            {% for industry, filers in reports_data|groupby('industry') %}
+            <div class="card">
+                <div class="card-header" id="heading{{ loop.index }}">
+                    <h2 class="mb-0">
+                        <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse{{ loop.index }}" aria-expanded="true">
+                            {{ industry }}
+                        </button>
+                    </h2>
+                </div>
+                <div id="collapse{{ loop.index }}" class="collapse" data-parent="#industryAccordion">
+                    <div class="card-body">
+                        <ul class="list-unstyled">
+                            {% for filer in filers %}
+                            <li class="mb-3">
+                                <strong>{{ filer.company_name }}</strong>
+                                <br> 
+                                Filing ID: {{ filer.filing_id }}
+                                <br>
+    
+                                <!-- Accordion for Text Sections -->
+                                <div class="accordion" id="textSectionsAccordion{{ filer.filing_id }}">
+                                    <div class="card">
+                                        <div class="card-header" id="headingText{{ filer.filing_id }}">
+                                            <h2 class="mb-0">
+                                                <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapseText{{ filer.filing_id }}" aria-expanded="false">
+                                                    Text Sections
+                                                </button>
+                                            </h2>
+                                        </div>
+                                        <div id="collapseText{{ filer.filing_id }}" class="collapse" data-parent="#textSectionsAccordion{{ filer.filing_id }}">
+                                            <div class="card-body">
+                                                {% if filer.text_sections %}
+                                                    <ul>
+                                                        {% for text_doc in filer.text_sections %}
+                                                        <li>
+                                                            {{ text_doc.section_name }} - 
+                                                            <a href="{{ url_for('static', filename='documents/' + text_doc.doc_name) }}" target="_blank">{{ text_doc.doc_name }}</a>
+                                                        </li>
+                                                        {% endfor %}
+                                                    </ul>
+                                                {% else %}
+                                                    N/A
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+    
+                                <!-- Accordion for Financial Reports -->
+                                <div class="accordion" id="financialReportsAccordion{{ filer.filing_id }}">
+                                    <div class="card">
+                                        <div class="card-header" id="headingFinancial{{ filer.filing_id }}">
+                                            <h2 class="mb-0">
+                                                <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapseFinancial{{ filer.filing_id }}" aria-expanded="false">
+                                                    Financial Reports
+                                                </button>
+                                            </h2>
+                                        </div>
+                                        <div id="collapseFinancial{{ filer.filing_id }}" class="collapse" data-parent="#financialReportsAccordion{{ filer.filing_id }}">
+                                            <div class="card-body">
+                                                {% if filer.financial_reports %}
+                                                    <ul>
+                                                        {% for fin_report in filer.financial_reports %}
+                                                        <li>
+                                                            {{ fin_report.rep_name }} - 
+                                                            <a href="{{ url_for('static', filename='documents/' + fin_report.doc_name) }}" target="_blank">{{ fin_report.doc_name }}</a>
+                                                        </li>
+                                                        {% endfor %}
+                                                    </ul>
+                                                {% else %}
+                                                    N/A
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+    
+                                <br>
+                                <button class="btn btn-sm btn-primary" onclick="loadFinDocuments('{{ filer.filing_id }}')">View Documents</button>
+                                <div id="documents-{{ filer.filing_id }}" class="documents"></div>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>      
+    
+    <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
+    <!-- jQuery (required for Bootstrap JS) -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <!-- Popper.js (positioning library for tooltips, dropdowns) -->
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
+    <!-- Bootstrap JS -->
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>
