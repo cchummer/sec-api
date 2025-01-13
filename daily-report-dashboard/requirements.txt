@@ -1,0 +1,7 @@
+requests
+pandas
+aiohttp
+azure-storage-blob
+beautifulsoup4
+pymupdf
+pyodbc
