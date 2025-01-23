@@ -1,0 +1,25 @@
+# Ignore config.py containing sensitive credentials
+config.py
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment files
+.env
+.venv/
+
+# VS Code settings
+.vscode/
+
+# Mac files
+.DS_Store
+
+# Logs
+*.log
+*.out
+*.err
+
+# Ignore virtual environment folders
+venv/
