@@ -10,7 +10,7 @@
 </head>
 <body>
     <header>
-        <h1>Financial Reports: {{ filing_type }}</h1>
+        <h1>({{ sql_summary.current_filings_date }}) Parsed Financial Reports: {{ filing_type }}</h1>
         <nav>
             <a href="{{ url_for('routes.home') }}">Home</a>
         </nav>

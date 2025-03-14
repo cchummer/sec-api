@@ -1,7 +1,8 @@
 from flask import Flask, Blueprint, render_template, request, redirect, url_for, session
-from get_data import refresh_csv_summary, refresh_sql_summary, refresh_sic_summary, refresh_fin_reports_summary, refresh_prospectus_reports_summary, refresh_events_summary, data_cache
+from get_data import refresh_csv_summary, refresh_sql_summary, refresh_sic_summary, refresh_fin_reports_summary, refresh_prospectus_reports_summary, refresh_events_summary, get_masterfiling_info, get_filing_data, data_cache
 from urllib.parse import unquote
 import config
+import json
 
 # Define the blueprint
 routes = Blueprint('routes', __name__)
@@ -36,7 +37,7 @@ def home():
         refresh_csv_summary()
         refresh_sql_summary()
         
-        return render_template("main.html", csv_summary=data_cache.csv_summary, sql_summary=data_cache.sql_summary)
+        return render_template("filings_summary.html", csv_summary=data_cache.csv_summary, sql_summary=data_cache.sql_summary)
     else:
         return redirect(url_for("routes.login"))
 
@@ -49,17 +50,17 @@ def filing_type_page(filing_type):
         # Financial report 
         if filing_type in config.FIN_REPORT_TYPES:
             refresh_fin_reports_summary(filing_type)
-            return render_template("fin_reports.html", filing_type=filing_type, reports_data=data_cache.fin_summary[filing_type])
+            return render_template("fin_reports.html", filing_type=filing_type, sql_summary=data_cache.sql_summary, reports_data=data_cache.fin_summary.get(filing_type))
         
         # Prospectus filings
         elif filing_type in config.PROSPECTUS_FILING_TYPES:
             refresh_prospectus_reports_summary(filing_type)
-            return render_template('prospectus_summaries.html', filing_type=filing_type, summaries_data=data_cache.prospectus_summary[filing_type])
+            return render_template('prospectus_summaries.html', filing_type=filing_type, sql_summary=data_cache.sql_summary, summaries_data=data_cache.prospectus_summary.get(filing_type))
         
         # Current event filing
         elif filing_type in config.EVENT_FILING_TYPES:
-            refresh_events_summary()
-            return render_template('events.html', sql_summary=data_cache.sql_summary, events_data=data_cache.events_summary)
+            refresh_events_summary(filing_type)
+            return render_template('events.html', filing_type=filing_type, sql_summary=data_cache.sql_summary, events_data=data_cache.events_summary.get(filing_type))
 
         # Insider transaction filing
 
@@ -80,6 +81,35 @@ def industry_page(sic):
     if "logged_in" in session and session["logged_in"]:
         refresh_sic_summary(sic)
 
-        return render_template("industry.html", sic_summary=data_cache.sic_summary[sic])
+        # Parse the topic_json for each topic detail in place.
+        sic_data = data_cache.sic_summary.get(sic)
+        if sic_data and 'topic_analysis_results' in sic_data:
+            for run in sic_data['topic_analysis_results']:
+                for detail in run.get('details', []):
+                    try:
+                        # Replace the JSON string with the parsed dictionary.
+                        detail['topic_json'] = json.loads(detail['topic_json'])
+                    except Exception as e:
+                        print(f"Error parsing topic_json for detail: {e}")
+
+        return render_template("industry.html", sql_summary=data_cache.sql_summary, sic_summary=data_cache.sic_summary.get(sic))
+    else:
+        return redirect(url_for("routes.login"))
+    
+@routes.route('/view-filing/<filing_id>')
+def view_filing(filing_id):
+    """Display details of a single filing"""
+    if "logged_in" in session and session["logged_in"]:
+        get_masterfiling_info(filing_id)
+
+        filing_info = data_cache.indiv_filings.get(filing_id, {})
+        filing_type = filing_info.get('type')
+
+        if filing_type:
+            get_filing_data(filing_id)
+        else:
+            print(f'No filing type found for filing_id {filing_id}.')
+
+        return render_template('indiv_filing.html', sql_summary=data_cache.sql_summary, filing_info=data_cache.indiv_filings.get(filing_id))
     else:
         return redirect(url_for("routes.login"))

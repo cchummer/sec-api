@@ -1,5 +1,7 @@
 from azure.storage.blob import BlobServiceClient
+from collections import defaultdict
 import pandas as pd
+import json
 import pyodbc
 import config
 
@@ -10,7 +12,8 @@ class DataCache:
     sic_summary = {} # Will hold summary data regarding filers and filing types, organized by industry
     fin_summary = {} # Will hold summary data regarding financial report type filings, organized by specific filing type
     prospectus_summary = {} # Will hold summary data regarding prospectus summary type filings, organized by specific filing type
-    events_summary = {} # Will hold summary data regarding 8K/current event filings
+    events_summary = {} # Will hold summary data regarding current event filings, organized by specific filing type
+    indiv_filings = {}
 
 data_cache = DataCache()
 
@@ -77,6 +80,9 @@ def refresh_sql_summary():
                 cursor.execute("SELECT COUNT(*) FROM MasterFiling;")
                 total_parsed_filings = cursor.fetchone()[0]
 
+                cursor.execute("SELECT MIN(date) AS current_filings_date FROM MasterFiling;")
+                current_filings_date = cursor.fetchone()[0]
+
                 cursor.execute("""
                     SELECT type, COUNT(*) AS count
                     FROM MasterFiling
@@ -104,6 +110,7 @@ def refresh_sql_summary():
                 # Convert results to dictionaries
                 data_cache.sql_summary = {
                     'total_filings_parsed': total_parsed_filings,
+                    'current_filings_date': current_filings_date,
                     'parsed_by_type': [{'type': row[0], 'count': row[1]} for row in parsed_by_type],
                     'parsed_by_company': [{'company_name': row[0], 'count': row[1]} for row in parsed_by_company],
                     'parsed_by_industry': [{'sic_code': row[0], 'sic_desc': row[1], 'count': row[2]} for row in parsed_by_industry]
@@ -117,6 +124,54 @@ def refresh_sql_summary():
 
     else:
         print('sql_summary already populated, skipping refresh.')
+
+def get_industry_analysis(sic, conn):
+    """
+    Fetches analysis results for the given industry, if any exist in the DB
+    """
+    print(f'Fetching industry analysis results for SIC: {sic}.')
+
+    cursor = conn.cursor()
+
+    # We filter on description = 'industryXindustry' to pick only industry-level analysis.
+    cursor.execute("""
+        SELECT topic_analysis_id, analysis_date, model_type, n_topics, n_top_words, description
+        FROM TopicAnalysis
+        WHERE sic_code = ? AND description = 'industryXindustry'
+        ORDER BY analysis_date DESC;
+    """, (sic,))
+    topic_analysis_runs = cursor.fetchall()
+
+    print(f'Successfully queried TopicAnalysis table for SIC {sic}.')
+
+    topic_analysis_results = []
+    for row in topic_analysis_runs:
+        topic_analysis_id = row[0]
+        # For each run, fetch its topic details from TopicDetails.
+        cursor.execute("""
+            SELECT topic_number, topic_json
+            FROM TopicDetails
+            WHERE topic_analysis_id = ?
+            ORDER BY topic_number;
+        """, (topic_analysis_id,))
+        details = cursor.fetchall()
+        details_list = [
+            {"topic_number": d[0], "topic_json": d[1]}
+            for d in details
+        ]
+        run_dict = {
+            "topic_analysis_id": topic_analysis_id,
+            "analysis_date": row[1],
+            "model_type": row[2],
+            "n_topics": row[3],
+            "n_top_words": row[4],
+            "description": row[5],
+            "details": details_list
+        }
+        topic_analysis_results.append(run_dict)
+        print(f'Successfully processed TopicDetails table data for topic ID {topic_analysis_id}.')
+
+    return topic_analysis_results
 
 def refresh_sic_summary(sic):
     """Fetch and cache SIC summary counts."""
@@ -152,12 +207,16 @@ def refresh_sic_summary(sic):
                         GROUP BY company_name;
                     """, (sic,)).fetchall()
 
+                    # Get industry analysis results if any exist
+                    industry_topics = get_industry_analysis(sic, conn)
+
                     data_cache.sic_summary[sic] = {
                         'sic_desc': result[0],
                         'sic_code': result[1],
                         'total_filings': result[2],
                         'by_type': [{'type': row[0], 'count': row[1]} for row in filings_by_type],
                         'by_company': [{'company_name': row[0], 'count': row[1]} for row in filings_by_company],
+                        'topic_analysis_results': industry_topics
                     }
                 else:
                     data_cache.sic_summary[sic] = {
@@ -333,10 +392,10 @@ def refresh_prospectus_reports_summary(filing_type):
     else:
         print(f'prospectus_summary already populated for type {filing_type}, skipping refresh.')
 
-def refresh_events_summary():
+def refresh_events_summary(filing_type):
     """Fetch and cache 8K/current event filing summaries."""
-    print('Refreshing events_summary dictionary.')
-    if not data_cache.events_summary:  # Only query if events_summary is empty
+    print(f'Refreshing events_summary dictionary for type {filing_type}.')
+    if filing_type not in data_cache.events_summary:  # Only query if events_summary is empty for the given filing type 
         try:
             conn = get_db_connection()
             if conn:
@@ -348,18 +407,19 @@ def refresh_events_summary():
                     'by_item': {}
                 }
             
-                # Query to fetch all 8-K filings and their details, including filer_cik
+                # Query to fetch all event filings and their details, including filer_cik
                 cursor.execute('''
-                    SELECT mf.company_name, mf.date, mf.business_address, mf.accession_number,
-                        mf.sic_desc, mf.cik, e.event_id
+                    SELECT mf.filing_id, mf.company_name, mf.date, mf.business_address, mf.accession_number,
+                        mf.sic_code, mf.sic_desc, mf.cik, e.event_id
                     FROM MasterFiling mf
                     JOIN Event8K e ON mf.filing_id = e.filing_id
-                ''')
+                    WHERE mf.type = ?
+                ''', (filing_type))
                 
                 filings = cursor.fetchall()
 
-                for (company_name, date, business_address, accession_number,
-                    sic_desc, cik, event_id) in filings:
+                for (filing_id, company_name, date, business_address, accession_number,
+                    sic_code, sic_desc, cik, event_id) in filings:
                     # Query to fetch items listed for this event
                     cursor.execute('''
                         SELECT item_name
@@ -371,22 +431,25 @@ def refresh_events_summary():
 
                     # Create the filing record
                     filing_record = {
+                        'filing_id': filing_id,
                         'company_name': company_name,
                         'date': date,
                         'items_listed': items_listed,
                         'business_address': business_address,
                         'accession_number': accession_number,
-                        'cik': cik
+                        'cik': cik,
+                        'sic_code': sic_code,
+                        'sic_desc': sic_desc
                     }
 
                     # Populate by_industry with count
-                    if sic_desc not in events_data['by_industry']:
-                        events_data['by_industry'][sic_desc] = {
+                    if f'{sic_code} - {sic_desc}' not in events_data['by_industry']:
+                        events_data['by_industry'][f'{sic_code} - {sic_desc}'] = {
                             'filings': [],
                             'count': 0
                         }
-                    events_data['by_industry'][sic_desc]['filings'].append(filing_record)
-                    events_data['by_industry'][sic_desc]['count'] += 1
+                    events_data['by_industry'][f'{sic_code} - {sic_desc}']['filings'].append(filing_record)
+                    events_data['by_industry'][f'{sic_code} - {sic_desc}']['count'] += 1
 
 
                     # Populate by_item with count
@@ -396,14 +459,7 @@ def refresh_events_summary():
                                 'filings': [],
                                 'count': 0
                             }
-                        events_data['by_item'][item]['filings'].append({
-                            'company_name': company_name,
-                            'date': date,
-                            'items_listed': items_listed,
-                            'accession_number': accession_number,
-                            'cik': cik,
-                            'sic_desc': sic_desc
-                        })
+                        events_data['by_item'][item]['filings'].append(filing_record)
                         events_data['by_item'][item]['count'] += 1
 
                 # Sort by count
@@ -411,14 +467,204 @@ def refresh_events_summary():
                 events_data['by_item'] = dict(sorted(events_data['by_item'].items(), key=lambda item: item[1]['count'], reverse=True))
 
                 # Store in the cache
-                data_cache.events_summary = events_data
+                data_cache.events_summary[filing_type] = events_data
 
                 conn.close()
-                print('Refreshed events_summary dictionary.')
+                print(f'Refreshed events_summary dictionary for type {filing_type}.')
         
         except Exception as e:
-            print(f"Error fetching current events filings summary: {e}.")
+            print(f"Error fetching current events filings summary for type {filing_type}: {e}.")
             data_cache.events_summary = []  # Empty list if error occurs
 
     else:
-        print(f'events_summary already populated, skipping refresh.')
+        print(f'events_summary already populated for type {filing_type}, skipping refresh.')
+
+def load_event_filing_data(filing_id, conn):
+    """
+    Loads data for an individual event filing (8-K, etc.) into the data_cache.
+    """
+    print(f'Attempting to load 8-K/event filing data for filing_id {filing_id}.')
+
+    cursor = conn.cursor()
+
+    # Load TextDocument data
+    cursor.execute("SELECT * FROM TextDocument WHERE filing_id = ?", (filing_id,))
+    text_documents = cursor.fetchall()
+    data_cache.indiv_filings[filing_id]['TextDocument'] = text_documents
+
+    # Load TextSectionFacts data
+    cursor.execute("""
+        SELECT tsf.* 
+        FROM TextSectionFacts tsf
+        JOIN TextDocument td ON tsf.text_document_id = td.text_document_id
+        WHERE td.filing_id = ?
+    """, (filing_id,))
+    text_section_facts = cursor.fetchall()
+    data_cache.indiv_filings[filing_id]['TextSectionFacts'] = text_section_facts
+
+    print(f'Got filing_id {filing_id} 8-K text documents and sections.')
+
+    # Load Event8K data and parse event_info as JSON
+    cursor.execute("SELECT event_id, filing_id, event_info FROM Event8K WHERE filing_id = ?", (filing_id))
+    event_8k_row = cursor.fetchone()
+    if event_8k_row:
+        event_id, int_filing_id, event_info_str = event_8k_row
+        #try:
+        if event_info_str:
+            print(f"event_info_str: {event_info_str}.")
+            event_info = json.loads(event_info_str)
+        else:
+            print(f"Failed to find event_info_str.")
+            event_info = {}
+        #except Exception as e:
+        #    print(f"JSON decoding error for filing_id {filing_id}: {e}")
+        #    print(f"Raw event_info string: {event_info_str}")
+        #    event_info = {}
+        data_cache.indiv_filings[filing_id]['Event8K'] = {
+            'event_id': event_id,
+            'filing_id': int_filing_id,
+            'event_info': event_info
+        }
+    else:
+        print(f'No Event8K entry found for filing_id {filing_id}.')
+        data_cache.indiv_filings[filing_id]['Event8K'] = None
+
+    # Load Event8KItems data
+    cursor.execute("""
+        SELECT e8ki.* 
+        FROM Event8KItems e8ki
+        JOIN Event8K e8k ON e8ki.event_id = e8k.event_id
+        WHERE e8k.filing_id = ?
+    """, (filing_id))
+    event_8k_items = cursor.fetchall()
+    data_cache.indiv_filings[filing_id]['Event8KItems'] = event_8k_items
+
+    print(f'Loaded 8-K/event filing data for filing_id {filing_id}.')
+
+def load_prospectus_filing_data(filing_id, conn):
+    """
+    Loads data for an individual prospectus summary filing (S-1, etc.) into the data_cache.
+    """
+    print(f'Attempting to load prospectus summary filing data for filing_id {filing_id}.')
+
+    cursor = conn.cursor()
+
+    # Load TextDocument data
+    cursor.execute("SELECT * FROM TextDocument WHERE filing_id = ?", (filing_id,))
+    text_documents = cursor.fetchall()
+    data_cache.indiv_filings[filing_id]['TextDocument'] = text_documents
+
+    # Load TextSectionFacts data
+    cursor.execute("""
+        SELECT tsf.* 
+        FROM TextSectionFacts tsf
+        JOIN TextDocument td ON tsf.text_document_id = td.text_document_id
+        WHERE td.filing_id = ?
+    """, (filing_id,))
+    text_section_facts = cursor.fetchall()
+    data_cache.indiv_filings[filing_id]['TextSectionFacts'] = text_section_facts
+
+    print(f'Got filing_id {filing_id} prospectus text documents and sections.')
+    print(f'Loaded prospectus summary filing data filing_id {filing_id}.')
+
+def get_masterfiling_info(filing_id):
+    """Fetch and cache MasterFiling info for an individual filing."""
+    print(f'Refreshing indiv_filings dictionary MasterFiling summary for filing_id: {filing_id}.')
+    if filing_id not in data_cache.indiv_filings: # Check filing info is not already cached
+        try:
+            conn = get_db_connection()
+            if conn:
+                cursor = conn.cursor()
+
+                # Query the MasterFiling table for the filing details
+                cursor.execute("""
+                    SELECT filing_id, cik, type, date, accession_number, company_name, 
+                        sic_code, sic_desc, report_period, state_of_incorp, 
+                        fiscal_yr_end, business_address, business_phone, name_changes
+                    FROM MasterFiling
+                    WHERE filing_id = ?;
+                """, (filing_id,))
+                result = cursor.fetchone()
+
+                # If the filing exists, return a dictionary
+                if result:
+                    data_cache.indiv_filings[filing_id] = {
+                        'filing_id': result[0],
+                        'cik': result[1],
+                        'type': result[2],
+                        'date': result[3],
+                        'accession_number': result[4],
+                        'company_name': result[5],
+                        'sic_code': result[6],
+                        'sic_desc': result[7],
+                        'report_period': result[8],
+                        'state_of_incorp': result[9],
+                        'fiscal_yr_end': result[10],
+                        'business_address': result[11],
+                        'business_phone': result[12],
+                        'name_changes': result[13]
+                    }
+                    print(f'Fetched filing summary for filing_id: {filing_id}.')
+                else:
+                    data_cache.indiv_filings[filing_id] = []
+                    print(f'MasterFiling query returned empty for filing_id: {filing_id}.')
+
+                conn.close()
+                print(f'Refreshed indiv_filings dictionary MasterFiling summary for filing id {filing_id}.')
+
+        except Exception as e:
+            print(f"Error fetching individual filing_id {filing_id} MasterFiling info: {e}.")
+            data_cache.indiv_filings[filing_id] = []  # Empty list if error occurs
+
+    else:
+        print(f'indiv_filings dictionary MasterFiling summary already populated for filing_id {filing_id}, skipping refresh.')
+
+def get_filing_data(filing_id):
+    """
+    Dispatches to the appropriate data loading function based on filing type, caching results.
+    """
+    print(f'Refreshing full indiv_filings dictionary for filing_id {filing_id}.')
+    get_masterfiling_info(filing_id) # Refresh incase somehow hasn't been called
+    filing_type = data_cache.indiv_filings[filing_id].get('type')
+
+    # Only query if this filing's data has not been previously successfully cached
+    if not data_cache.indiv_filings[filing_id].get('full_cached'):
+        try:
+            conn = get_db_connection()
+            if conn:
+
+                # Map filing types to loader functions
+                filing_type_to_loader = defaultdict(
+                    lambda: None,  # Default to None for unsupported types
+                    {
+                        #'10-Q': load_financial_filing_data,
+                        #'10-K': load_financial_filing_data,
+                        #'6-K': load_financial_filing_data,
+                        #'13F-HR': load_holdings_filing_data,
+                        #'13F-NT': load_holdings_filing_data,
+                        '8-K': load_event_filing_data,
+                        '8-K/A': load_event_filing_data,
+                        'S-1': load_prospectus_filing_data,
+                        'S-1/A': load_prospectus_filing_data,
+                        'S-3': load_prospectus_filing_data,
+                        'S-3/A': load_prospectus_filing_data
+                        # Add other mappings as needed
+                    }
+                )
+
+                loader_function = filing_type_to_loader[filing_type]
+                if loader_function:
+                    print(f'Chose loader for filing type {filing_type}.')
+                    loader_function(filing_id, conn)
+                    print(f'Fetched filing data for filing_id {filing_id}.')
+                    data_cache.indiv_filings[filing_id]['full_cached'] = True
+                else:
+                    print(f"Unsupported filing type in get_filing_data: {filing_type}, filing_id {filing_id}.")
+                
+                conn.close()
+                
+        except Exception as e:
+            print(f'Error refreshing full indiv_filings dictionary for filing_id {filing_id}: {e}.')
+
+    else:
+        print(f'indiv_filings dictionary already fully populated for filing_id {filing_id}, skipping refresh.')

@@ -1,52 +1,59 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>8-K Filings Summary</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-    <!-- Bootstrap CSS -->
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-</head>
-<body>
-    <header>
-        <h1>8-K (Current Event) Filings Summary</h1>
-        <nav>
-            <a href="{{ url_for('routes.home') }}">Home</a>
-        </nav>
-    </header>
+{% extends "main.html" %}
 
-    <main>
-        <div class="summary-section">
-            <!-- Group by Industry -->
-            <div class="summary-column">
-                <h2>Filings by Industry</h2>
-                {% if events_data['by_industry'] %}
-                    {% for industry, data in events_data['by_industry'].items() %}
-                        {% set industry_index = loop.index %} <!-- Store the industry index -->
-                        <div class="industry-group" id="industry-{{ industry_index }}">
-                            <h3>{{ industry }} ({{ data['count'] }})</h3>
-                            <ul>
-                                {% for filing in data['filings'][:10] %}
-                                    <li>
-                                        <strong>{{ filing['company_name'] }}</strong>
-                                        <button class="accordion" onclick="toggleContent('industryFiler-{{ industry_index }}-{{ loop.index }}')">Items</button>
-                                        <ul id="industryFiler-{{ industry_index }}-{{ loop.index }}" class="content">
-                                            {% for item in filing['items_listed'] %}
-                                                <li>{{ item }}</li>
-                                            {% endfor %}
-                                        </ul>
-                                    </li>
-                                {% endfor %}
-                            </ul>
-                            {% if data['count'] > 10 %}
-                                <span class="collapsible-list" onclick="toggleContent('eventsByIndustry-{{ industry_index }}')">Show All</span>
-                                <ul id="eventsByIndustry-{{ industry_index }}" class="content">
+{% block title %}8-K Filings Summary{% endblock %}
+
+{% block content %}
+<main>
+    <h2>Current Event ({{ filing_type }}) Filings</h2>
+    <div class="total-filings">
+        <p>Total # Filings: 
+            {% if sql_summary and sql_summary.parsed_by_type %}
+                {% set filing_count = sql_summary.parsed_by_type | selectattr('type', 'equalto', filing_type) | map(attribute='count') | sum %}
+                {{ filing_count }}
+            {% else %}
+                0
+            {% endif %}
+        </p>
+    </div>
+    <div class="summary-section">
+        <!-- Group by Industry -->
+        <div class="summary-column">
+            <h2>Filings by Industry</h2>
+            {% if events_data['by_industry'] %}
+                {% for industry, data in events_data['by_industry'].items() %}
+                    {% set industry_index = loop.index %}
+                    <div class="industry-group" id="industry-{{ industry_index }}">
+                        <h3>{{ industry }} ({{ data['count'] }})</h3>
+                        <ul>
+                            {% for filing in data['filings'][:10] %}
+                                <li>
+                                    <strong>
+                                        <a href="{{ url_for('routes.view_filing', filing_id=filing['filing_id']) }}">
+                                            {{ filing['company_name'] }}
+                                        </a>
+                                    </strong>
+                                    <button class="accordion" onclick="toggleContent('industryFiler-{{ industry_index }}-{{ loop.index }}')">Items</button>
+                                    <ul id="industryFiler-{{ industry_index }}-{{ loop.index }}" class="content">
+                                        {% for item in filing['items_listed'] %}
+                                            <li>{{ item }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                        {% if data['count'] > 10 %}
+                            <button class="collapsible-list" onclick="toggleContent('eventsByIndustry-{{ industry_index }}')">Show All</button>
+                            <div id="eventsByIndustry-{{ industry_index }}" class="content">
+                                <ul>
                                     {% for filing in data['filings'][10:] %}
                                         <li>
-                                            <strong>{{ filing['company_name'] }}</strong>
-                                            <button class="accordion" onclick="toggleContent('eventFiler-{{ industry_index }}-{{ loop.index }}')">Items</button>
-                                            <ul id="eventFiler-{{ industry_index }}-{{ loop.index }}" class="content">
+                                            <strong>
+                                                <a href="{{ url_for('routes.view_filing', filing_id=filing['filing_id']) }}">
+                                                    {{ filing['company_name'] }}
+                                                </a>
+                                            </strong>
+                                            <button class="accordion" onclick="toggleContent('eventFiler-{{ industry_index }}-{{ loop.index + 10 }}')">Items</button>
+                                            <ul id="eventFiler-{{ industry_index }}-{{ loop.index + 10 }}" class="content">
                                                 {% for item in filing['items_listed'] %}
                                                     <li>{{ item }}</li>
                                                 {% endfor %}
@@ -54,53 +61,57 @@
                                         </li>
                                     {% endfor %}
                                 </ul>
-                            {% endif %}
-                        </div>
-                    {% endfor %}
-                {% else %}
-                    <p>No filings available for today.</p>
-                {% endif %}
-            </div>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p>No filings available for today.</p>
+            {% endif %}
+        </div>
 
-            <!-- Group by Item Number/Type -->
-            <div class="summary-column">
-                <h2>Filings by Item Type</h2>
-                {% if events_data['by_item'] %}
-                    {% for item, data in events_data['by_item'].items() %}
-                        <div class="item-group" id="item-{{ loop.index }}">
-                            <h3>{{ item }} ({{ data['count'] }})</h3>
-                            <ul>
-                                {% for filing in data['filings'][:10] %}
-                                    <li>
-                                        <strong>{{ filing['company_name'] }}</strong><br>
-                                        <em>Industry:</em> {{ filing['sic_desc'] }}
-                                    </li>
-                                {% endfor %}
-                            </ul>
-                            {% if data['count'] > 10 %}
-                                <span class="collapsible-list" onclick="toggleContent('eventsByItem-{{ loop.index }}')">Show All</span>
-                                <ul id='eventsByItem-{{ loop.index }}' class="content">
+        <!-- Group by Item Number/Type -->
+        <div class="summary-column">
+            <h2>Filings by Item Type</h2>
+            {% if events_data['by_item'] %}
+                {% for item, data in events_data['by_item'].items() %}
+                    <div class="item-group" id="item-{{ loop.index }}">
+                        <h3>{{ item }} ({{ data['count'] }})</h3>
+                        <ul>
+                            {% for filing in data['filings'][:10] %}
+                                <li>
+                                    <strong>
+                                        <a href="{{ url_for('routes.view_filing', filing_id=filing['filing_id']) }}">
+                                            {{ filing['company_name'] }}
+                                        </a>
+                                    </strong><br>
+                                    <em>Industry:</em> {{ filing['sic_desc'] }}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                        {% if data['count'] > 10 %}
+                            <button class="collapsible-list" onclick="toggleContent('eventsByItem-{{ loop.index }}')">Show All</button>
+                            <div id='eventsByItem-{{ loop.index }}' class="content">
+                                <ul>
                                     {% for filing in data['filings'][10:] %}
                                         <li>
-                                            <strong>{{ filing['company_name'] }}</strong><br>
+                                            <strong>
+                                                <a href="{{ url_for('routes.view_filing', filing_id=filing['filing_id']) }}">
+                                                    {{ filing['company_name'] }}
+                                                </a>
+                                            </strong><br>
                                             <em>Industry:</em> {{ filing['sic_desc'] }}
                                         </li>
                                     {% endfor %}
                                 </ul>
-                            {% endif %}
-                        </div>
-                    {% endfor %}
-                {% else %}
-                    <p>No filings available for today.</p>
-                {% endif %}
-            </div>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p>No filings available for today.</p>
+            {% endif %}
         </div>
-    </main>
-
-    <!-- Bootstrap and jQuery -->
-    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
-
-    <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
-</body>
-</html>
+    </div>
+</main>
+{% endblock %}

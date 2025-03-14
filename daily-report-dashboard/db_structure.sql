@@ -4,6 +4,27 @@ Tables for daily SEC filing analysis.
 
 Delete with code:
 
+---------------------- TESTING ANALYSIS TABLES
+
+-- Drop Topic-Term Relationship Table
+DROP TABLE IF EXISTS TopicTerm;
+
+-- Drop Document-Term Relationship Table
+DROP TABLE IF EXISTS DocumentTerm;
+
+-- Drop Document-Topic Relationship Table
+DROP TABLE IF EXISTS DocumentTopic;
+
+-- Drop NLP Term/word Table
+DROP TABLE IF EXISTS NLPTerm;
+
+-- Drop Topic Analysis Run Table
+DROP TABLE IF EXISTS TopicAnalysisRun;
+
+---------------------- / TESTING ANALYSIS TABLES
+
+---------------------- FILING DATA TABLES
+
 -- Drop 8-K Event Items Table
 DROP TABLE IF EXISTS Event8KItems;
 
@@ -55,7 +76,11 @@ DROP TABLE IF EXISTS FinancialReport;
 -- Drop Master Filing Table
 DROP TABLE IF EXISTS MasterFiling;
 
+---------------------- / FILING DATA TABLES
+
 */
+
+---------------------- FILING DATA TABLES
 
 -- Master Filing Table
 CREATE TABLE MasterFiling (
@@ -261,3 +286,64 @@ CREATE TABLE Event8KItems (
     item_name VARCHAR(255) NOT NULL,  
     FOREIGN KEY (event_id) REFERENCES Event8K(event_id) ON DELETE CASCADE
 );
+
+---------------------- / FILING DATA TABLES
+
+---------------------- TESTING ANALYSIS TABLES
+
+-- Topic Analysis Run Table
+CREATE TABLE TopicAnalysisRun (
+    topic_analysis_run_id INT IDENTITY(1,1) PRIMARY KEY,
+    analysis_date DATE NOT NULL,
+    stopwords NVARCHAR(MAX),  -- Stored as a comma-separated string
+    additional_metadata NVARCHAR(MAX),  -- JSON metadata
+    n_topics INT NOT NULL,
+    n_top_words_doc INT NOT NULL,
+    n_top_words_topic INT NOT NULL,
+    corpus_size INT NOT NULL,
+    max_df FLOAT NOT NULL,
+    min_df FLOAT NOT NULL
+);
+
+-- NLP Term/word Table
+CREATE TABLE NLPTerm (
+    topic_analysis_run_id INT NOT NULL,
+    term_id INT NOT NULL,
+    word NVARCHAR(255) NOT NULL,
+    PRIMARY KEY (topic_analysis_run_id, term_id),
+    FOREIGN KEY (topic_analysis_run_id) REFERENCES TopicAnalysisRun(topic_analysis_run_id) ON DELETE CASCADE
+)
+
+-- Document-Topic Relationship Table
+CREATE TABLE DocumentTopic (
+    doc_topic_id INT IDENTITY(1,1) PRIMARY KEY,
+    topic_analysis_run_id INT NOT NULL,
+    doc_id INT NOT NULL,  -- Should correspond to a text_section_id from TextSectionFacts, despite it being called a document here
+    topic_id INT NOT NULL,
+    topic_weight FLOAT NOT NULL,
+    FOREIGN KEY (topic_analysis_run_id) REFERENCES TopicAnalysisRun(topic_analysis_run_id) ON DELETE CASCADE
+);
+
+-- Document-Term Relationship Table
+CREATE TABLE DocumentTerm (
+    doc_term_id INT IDENTITY(1,1) PRIMARY KEY,
+    topic_analysis_run_id INT NOT NULL,
+    doc_id INT NOT NULL, -- Should correspond to a text_section_id from TextSectionFacts, despite it being called a document here
+    term_id INT NOT NULL,
+    tfidf_weight FLOAT NOT NULL,
+    FOREIGN KEY (topic_analysis_run_id) REFERENCES TopicAnalysisRun(topic_analysis_run_id) ON DELETE CASCADE,
+    FOREIGN KEY (topic_analysis_run_id, term_id) REFERENCES NLPTerm(topic_analysis_run_id, term_id) ON DELETE NO ACTION
+)
+
+-- Topic-Term Relationship Table
+CREATE TABLE TopicTerm (
+    topic_term_id INT IDENTITY(1,1) PRIMARY KEY,
+    topic_analysis_run_id INT NOT NULL,
+    topic_id INT NOT NULL,
+    term_id INT NOT NULL,  
+    word_weight FLOAT NOT NULL,
+    FOREIGN KEY (topic_analysis_run_id) REFERENCES TopicAnalysisRun(topic_analysis_run_id) ON DELETE CASCADE,
+    FOREIGN KEY (topic_analysis_run_id, term_id) REFERENCES NLPTerm(topic_analysis_run_id, term_id) ON DELETE NO ACTION
+);
+
+---------------------- / TESTING ANALYSIS TABLES

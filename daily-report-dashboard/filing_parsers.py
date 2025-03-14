@@ -1,67 +1,13 @@
-#%pip install --upgrade pymupdf beautifulsoup4 lxml
-#%pip install azure-storage-blob
-
-from datetime import date, datetime
-from zoneinfo import ZoneInfo
+from time import time
 import logging
-import json
-import os
 import re
-import sys
-from azure.storage.blob import BlobServiceClient
-from logging.handlers import TimedRotatingFileHandler
 import unicodedata
 import uu
 import pymupdf
 import io
 from bs4 import BeautifulSoup, NavigableString
 import pandas as pd
-import config
 
-# Configure logging
-log_filename = f"pipeline2_{datetime.now().strftime('%Y-%m-%d')}.log"
-log_handler = TimedRotatingFileHandler(
-    filename=log_filename,
-    when='midnight',   # Rotate logs daily at midnight
-    interval=1,        # Interval is 1 day
-    backupCount=7,     # Keep the last 7 log files
-    encoding='utf-8'   # Encoding for the log file
-)
-
-# Set log formatter
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-log_handler.setFormatter(formatter)
-
-# Set up the root logger
-logging.basicConfig(
-    level=logging.INFO,  # Set the minimum logging level
-    handlers=[
-        log_handler,      # File handler for logs
-        logging.StreamHandler(sys.stdout)  # Console handler for logs
-    ]
-)
-
-logging.info("Logging initialized with TimedRotatingFileHandler.")
-
-# Initialize BlobServiceClient
-blob_connection_string = config.AZURE_BLOB_CONN_STR
-container_name = config.AZURE_BLOB_CONT_NAME
-blob_service_client = BlobServiceClient.from_connection_string(blob_connection_string)
-
-'''
-11/28/24
-
-Parser objects, written per filing type. Currently targetting:
-    - 10-Q + 10-K + 6-K
-    - 13F
-    - 13G + 13D
-    - S-1 + S-3
-    - 8K
-    - Form 4
-    - Proxy statements
-    - SEC actions+letters
-    - TODO: 20-F, 40-F, 11-K, N-CSR, N-Q, N-PORT
-'''
 
 '''
 Base class. Is able to read the SEC header (standard across filing types) and search for filing documents
@@ -486,7 +432,7 @@ class FinancialFilingParser(SECFulltextParser):
         for row_index, current_row in enumerate(table_soup.find_all('tr')):
 
             ######## TESTING
-            logging.info(f'Parsing row #{row_index + 1} of report table. Row text: {current_row.text}')
+            #logging.info(f'Parsing row #{row_index + 1} of report table. Row text: {current_row.text}')
             ########
             
             # If there is a sub-table, skip for now. TODO: Possibly parse/deal with
@@ -521,14 +467,14 @@ class FinancialFilingParser(SECFulltextParser):
                 data_row = [] 
 
                 ####### TESTING
-                logging.info(f'Parsing data row (row #{row_index + 1}) of report table. line_columns: {line_columns}')
+                #logging.info(f'Parsing data row (row #{row_index + 1}) of report table. line_columns: {line_columns}')
                 #######
         
                 # Skip superscripted values/columns (usually link to footnote) and those with class of "fn", again link to footnote
                 for column_index, current_column in enumerate(line_columns):
 
                     ####### TESTING
-                    logging.info(f'Parsing column #{column_index + 1} of #{row_index + 1}. Text: {current_column.text}')
+                    #logging.info(f'Parsing column #{column_index + 1} of #{row_index + 1}. Text: {current_column.text}')
                     #######
 
                     if len(current_column.find_all('sup')) == 0:
@@ -537,7 +483,7 @@ class FinancialFilingParser(SECFulltextParser):
                             data_row.append(data_column)
 
                             ######## TESTING
-                            logging.info(f'Appended column text to row list. Text appended: {data_column}')
+                            #logging.info(f'Appended column text to row list. Text appended: {data_column}')
                             ########
 
                 report_data['data'].append(data_row)
@@ -718,7 +664,8 @@ class FinancialFilingParser(SECFulltextParser):
             try:
                 report_dict['report_title_read'] = scraped_report['headers'][0][0]
             except:
-                logging.warning(f'Unable to read report title from parsed contents. Report name: {fin_report["short_name"]}.')
+                report_dict['report_title_read'] = fin_report["short_name"]
+                logging.warning(f'Unable to read report title from parsed contents. Setting to report name: {fin_report["short_name"]}.')
             
             # Save to dataframe
             report_dict['report_df'] = None
@@ -1516,7 +1463,7 @@ class Event8KParser(FinancialFilingParser):
         soup = BeautifulSoup(doc_content, 'html.parser')
 
         # Regex pattern to match item headers
-        item_pattern = re.compile(r'Item\s+\d+\.\d+')
+        item_pattern = re.compile(r'item\s+\d+\.\d+', re.IGNORECASE)
 
         # List to store the results
         results = []
@@ -2030,14 +1977,16 @@ class SECStaffParser(FinancialFilingParser):
     
     def __repr__(self):
         return 'SECStaffParser'
+    
 
-def parse_raw_filing(filing_contents_str):
-    """Assigns and runs the appropriate parser class from above based on filing type."""
-
+def parse_raw_filing(filing_contents):
+    '''
+    Chooses + executes the correct parser for the given filing
+    '''
     parsed_dict = {}
 
     # First populate filing_info subdict
-    filing_info_parser = SECFulltextParser(filing_contents_str)
+    filing_info_parser = SECFulltextParser(filing_contents)
     prelim_filing_info = filing_info_parser.full_parse()
     if not prelim_filing_info:
         logging.error(f'Failed to parse SEC header of filing.')
@@ -2052,28 +2001,28 @@ def parse_raw_filing(filing_contents_str):
         return parsed_dict
     
     if filing_type in ['10-q', '10-q/a', '10-k', '10-k/a', '6-k', '6-k/a']: 
-        parser = FinancialFilingParser(filing_contents_str)
+        parser = FinancialFilingParser(filing_contents)
 
     elif filing_type in ['13f-hr', '13f-hr/a', '13f-nt', '13f-nt/a']:
-        parser = HR13FParser(filing_contents_str)
+        parser = HR13FParser(filing_contents)
 
     elif filing_type in ['sc 13g', 'sc 13g/a', 'schedule 13g', 'schedule 13g/a', 'sc 13d', 'sc 13d/a', 'schedule 13d', 'schedule 13d/a']:
-        parser = HR13GParser(filing_contents_str)
+        parser = HR13GParser(filing_contents)
 
     elif filing_type in ['s-1', 's-1/a', 's-3', 's-3/a']:
-        parser = ProspectusParser(filing_contents_str)
+        parser = ProspectusParser(filing_contents)
 
     elif filing_type in ['8-k', '8-k/a']:
-        parser = Event8KParser(filing_contents_str)
+        parser = Event8KParser(filing_contents)
 
     elif filing_type in ['4', '4/a']:
-        parser = Form4Parser(filing_contents_str)
+        parser = Form4Parser(filing_contents)
 
     elif filing_type in ['def 14a', 'defa14a', 'def 14a/a']:
-        parser = ProxyParser(filing_contents_str)
+        parser = ProxyParser(filing_contents)
 
     elif filing_type in ['sec staff action', 'sec staff letter']:
-        parser = SECStaffParser(filing_contents_str)
+        parser = SECStaffParser(filing_contents)
 
     else:
         logging.warning(f'Unsupported filing type encountered: {filing_type}. Unable to parse.')
@@ -2087,130 +2036,3 @@ def parse_raw_filing(filing_contents_str):
             logging.error(f'Exception parsing filing. Error: {e}.')
 
     return parsed_dict
-
-def sanitize_filing_type(filing_type):
-    """Sanitize filing type before use as a folder (avoid /A filings created subdirs etc)"""
-
-    # Replace unsafe characters
-    safe_filing_type = filing_type.replace('/', '_')  # Replace '/' with '_'
-    safe_filing_type = safe_filing_type.replace(' ', '_')  # Replace spaces with '_'
-    safe_filing_type = re.sub(r'[<>:"\\|?*]', '_', safe_filing_type)  # Replace other unsafe characters
-    return safe_filing_type
-
-def blob_save_parsed_filing(container_client, parsed_filing):
-    """
-    Saves the parsed filing dict to its own blob, creating a path based on the info in parsed_filing
-    Path follows pattern: 'parsed_filings/YYYY/MM/DD/FILING_TYPE/INDUSTRY_SIC_CODE/FILER_CIK/ACCESSION_NUMBER.json'
-    """
-
-    try:
-        # Extract information from the filing_data dictionary
-        filing_info = parsed_filing['filing_info']
-        
-        # Build the blob name/path
-        date_str = filing_info['date']
-        filing_type = sanitize_filing_type(filing_info['type']) # Sanitize for use as folder name
-        sic_code = filing_info['sic_code']
-        cik = filing_info['cik']
-        accession_number = filing_info['accession_number']
-        
-        # Convert the date string 'YYYYMMDD' to the required format
-        year = date_str[:4]
-        month = date_str[4:6]
-        day = date_str[6:8]
-
-        # Create the blob name/path
-        blob_name = f'parsed_filings/{year}/{month}/{day}/{filing_type}/{sic_code}/{cik}/{accession_number}.json'
-        
-        # Serialize the filing_data to JSON
-        json_data = json.dumps(parsed_filing)
-    
-    except Exception as e:
-        logging.error(f'Failed to parse filing_info and build blob name. Error: {e}')
-        return False
-
-    try:
-        # Upload the JSON data to Azure Blob Storage
-        blob_client = container_client.get_blob_client(blob_name)
-        blob_client.upload_blob(json_data, overwrite=True)
-
-        logging.info(f'Successfully uploaded parsed filing to {blob_name}')
-        return True
-    
-    except Exception as e:
-        logging.error(f'Failed to upload parsed filing to {blob_name}\nError: {e}')
-        return False
-
-def process_filings_for_date(target_date):
-    """Main functionality is orchestrated here"""
-    
-    if type(target_date) not in [date, datetime]:
-        logging.error('Invalid target_date type. Must be a date or datetime object.')
-        raise Exception('Invalid target_date type. Must be a date or datetime object.')
-    
-    # Build our subfolder path for the day's filings
-    filings_folder = f'filings/{target_date.year}/{str(target_date.month).zfill(2)}/{str(target_date.day).zfill(2)}/'
-
-    # Get the container client
-    container_client = blob_service_client.get_container_client(container_name)
-
-    # List blobs in the specified folder
-    blob_list = container_client.list_blobs(name_starts_with=filings_folder)
-
-    # Filter blobs to only count txt files
-    txt_blobs = [blob for blob in blob_list if blob.name.endswith('.txt')]
-    total_blob_count = len(txt_blobs)
-
-    for count, blob in enumerate(txt_blobs):
-        
-        try:
-            # Download the blob content
-            blob_client = container_client.get_blob_client(blob.name)
-            content = blob_client.download_blob().readall().decode('utf-8')
-
-            logging.info(f'Attempting to parse filing data: {blob.name}, #{count + 1} / {total_blob_count}.')
-
-            # Parse 
-            parsed_filing = parse_raw_filing(content)
-
-            logging.info(f'Attempting to upload filing data: {blob.name}, #{count + 1} / {total_blob_count}.')
-
-            # Save parsed data to blob storage under its own path (will be built using filing_info in parsed_filing)
-            if (blob_save_parsed_filing(container_client, parsed_filing)):
-                logging.info(f'Parsed and saved {blob.name}, #{count + 1} / {total_blob_count} to parsed_filings.')
-            else:
-                logging.error(f'Failed to upload parsed filing data {blob.name}, #{count + 1} / {total_blob_count}.')
-        
-        except Exception as e:
-            logging.error(f'Exception thrown during filing parse + save. {blob.name}, #{count + 1} / {total_blob_count}. Error: {e}.')
-
-"""Real entrypoint, after config stuff at top"""
-logging.info('Starting pipeline step 2 (raw filing -> JSON transformation) workflow.')
-
-# Get the target date if passed
-target_date_str = sys.argv[1] if len(sys.argv) > 1 else None
-
-# Set target date accordingly
-if target_date_str:
-    try:
-        # Attempt to parse the target_date from the string
-        target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
-        logging.info(f'Target date read from parameter: {target_date_str}.')
-    except ValueError:
-        raise ValueError('Invalid date format for target_date. Please use YYYY-MM-DD.')           
-else:
-    # Default to today's date if no target_date is provided
-    # NOTE: Adjust timezone settings as needed (possible disrepancy between timezone your function app is provisioned in and other resources such as ADF timers)
-    target_date = datetime.now(ZoneInfo("America/Phoenix")).date()
-    logging.info('Target date set to today: {target_date}.')
-
-# TODO: Finish handling weekends and system holidays
-if target_date.weekday() in (5, 6):
-    logging.info('Target date is a Saturday or Sunday, no filings to parse.')
-    logging.info('Pipeline step 2 (raw filing -> JSON transformation) completed successfully.')
-    exit()
-
-# Call main worker method
-process_filings_for_date(target_date)
-
-logging.info('Pipeline step 2 (raw filing -> JSON transformation) completed successfully.')

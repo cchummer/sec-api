@@ -1,0 +1,178 @@
+{% extends "main.html" %}
+
+{% block content %}
+<main>
+    <!-- Summary of all the day's filings, calculated from CSV data -->
+    <div id="all-filings-section" class="filings-summary-section">
+        <h2>All Daily Filings (Both Unparsed and Parsed)</h2>
+        <p>Total # Filings: {{ csv_summary.total_filings }}</p>
+
+        <div class="summary-section">
+            <!-- Filings by Type -->
+            <div class="summary-column">
+                <h3>Filings by Type:</h3>
+                <p>Total # Types: {{ csv_summary.all_by_type | length }}</p>
+                <ul>
+                    {% if csv_summary.all_by_type %}
+                        {% for filing_type, count in csv_summary.all_by_type[:10] %}
+                            <li>
+                                <strong>{{ filing_type }}</strong>: {{ count }} 
+                                ({{ '%.2f' | format((count / csv_summary.total_filings) * 100) }}%)
+                            </li>
+                        {% endfor %}
+                    {% else %}
+                        <li>No data available</li>
+                    {% endif %}
+                </ul>
+                {% if csv_summary.all_by_type | length > 10 %}
+                    <button class="collapsible-list" onclick="toggleContent('allTypes')">Show All</button>
+                    <div id="allTypes" class="content">
+                        <ul>
+                            {% for filing_type, count in csv_summary.all_by_type[10:] %}
+                                <li>
+                                    <strong>{{ filing_type }}</strong>: {{ count }} 
+                                    ({{ '%.2f' | format((count / csv_summary.total_filings) * 100) }}%)
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+            </div>
+            
+            <!-- Filings by Company -->
+            <div class="summary-column">
+                <h3>Filings by Company/Filer:</h3>
+                <p>Total # Companies/Filers: {{ csv_summary.all_by_company | length }}</p>
+                <ul>
+                    {% if csv_summary.all_by_company %}
+                        {% for company, count in csv_summary.all_by_company[:10] %}
+                            <li>
+                                <strong>{{ company }}</strong>: {{ count }} 
+                                ({{ '%.2f' | format((count / csv_summary.total_filings) * 100) }}%)
+                            </li>
+                        {% endfor %}
+                    {% else %}
+                        <li>No data available</li>
+                    {% endif %}
+                </ul>
+                {% if csv_summary.all_by_company | length > 10 %}
+                    <button class="collapsible-list" onclick="toggleContent('allCompanies')">Show All</button>
+                    <div id="allCompanies" class="content">
+                        <ul>
+                            {% for company, count in csv_summary.all_by_company[10:] %}
+                                <li>
+                                    <strong>{{ company }}</strong>: {{ count }} 
+                                    ({{ '%.2f' | format((count / csv_summary.total_filings) * 100) }}%)
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <br>
+
+    <!-- Summary of parsed filings, pulled from SQL DB -->
+    <div id="parsed-filings-section" class="filings-summary-section">
+        <h2>Parsed Filings</h2>
+        <p>Total Parsed Filings: {{ sql_summary.total_filings_parsed }}</p>
+
+        <div class="summary-section">
+            <!-- Filings by Type -->
+            <div class="summary-column">
+                <h3>Filings by Type:</h3>
+                <p>Total # Types: {{ sql_summary.parsed_by_type | length }}</p>
+                <ul>
+                    {% if sql_summary.parsed_by_type %}
+                        {% for type_dict in sql_summary.parsed_by_type[:10] %}
+                            <li>
+                                <strong>{{ type_dict.type }}</strong>: {{ type_dict.count }} 
+                                ({{ '%.2f' | format((type_dict.count / sql_summary.total_filings_parsed) * 100) }}%)
+                            </li>
+                        {% endfor %}
+                    {% else %}
+                        <li>No data available</li>
+                    {% endif %}
+                </ul>
+                {% if sql_summary.parsed_by_type | length > 10 %}
+                    <button class="collapsible-list" onclick="toggleContent('parsedTypes')">Show All</button>
+                    <div id="parsedTypes" class="content">
+                        <ul>
+                            {% for type_dict in sql_summary.parsed_by_type[10:] %}
+                                <li>
+                                    <strong>{{ type_dict.type }}</strong>: {{ type_dict.count }} 
+                                    ({{ '%.2f' | format((type_dict.count / sql_summary.total_filings_parsed) * 100) }}%)
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+            </div>
+            
+            <!-- Filings by Company -->
+            <div class="summary-column">
+                <h3>Filings by Company/Filer:</h3>
+                <p>Total # Companies/Filers: {{ sql_summary.parsed_by_company | length }}</p>
+                <ul>
+                    {% if sql_summary.parsed_by_company %}
+                        {% for co_dict in sql_summary.parsed_by_company[:10] %}
+                            <li>
+                                <strong>{{ co_dict.company_name }}</strong>: {{ co_dict.count }} 
+                                ({{ '%.2f' | format((co_dict.count / sql_summary.total_filings_parsed) * 100) }}%)
+                            </li>
+                        {% endfor %}
+                    {% else %}
+                        <li>No data available</li>
+                    {% endif %}
+                </ul>
+                {% if sql_summary.parsed_by_company | length > 10 %}
+                    <button class="collapsible-list" onclick="toggleContent('parsedCompanies')">Show All</button>
+                    <div id="parsedCompanies" class="content">
+                        <ul>
+                            {% for co_dict in sql_summary.parsed_by_company[10:] %}
+                                <li>
+                                    <strong>{{ co_dict.company_name }}</strong>: {{ co_dict.count }} 
+                                    ({{ '%.2f' | format((co_dict.count / sql_summary.total_filings_parsed) * 100) }}%)
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Filings by Industry -->
+            <div class="summary-column">
+                <h3>Filings by Industry:</h3>
+                <p>Total # Industries: {{ sql_summary.parsed_by_industry | length }}</p>
+                <ul>
+                    {% if sql_summary.parsed_by_industry %}
+                        {% for sic_dict in sql_summary.parsed_by_industry[:10] %}
+                            <li>
+                                <strong>{{ sic_dict.sic_code }} - {{ sic_dict.sic_desc }}</strong>: {{ sic_dict.count }} 
+                                ({{ '%.2f' | format((sic_dict.count / sql_summary.total_filings_parsed) * 100) }}%)
+                            </li>
+                        {% endfor %}
+                    {% else %}
+                        <li>No data available</li>
+                    {% endif %}
+                </ul>
+                {% if sql_summary.parsed_by_industry | length > 10 %}
+                    <button class="collapsible-list" onclick="toggleContent('parsedIndustries')">Show All</button>
+                    <div id="parsedIndustries" class="content">
+                        <ul>
+                            {% for sic_dict in sql_summary.parsed_by_industry[10:] %}
+                                <li>
+                                    <strong>{{ sic_dict.sic_code }} - {{ sic_dict.sic_desc }}</strong>: {{ sic_dict.count }} 
+                                    ({{ '%.2f' | format((sic_dict.count / sql_summary.total_filings_parsed) * 100) }}%)
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

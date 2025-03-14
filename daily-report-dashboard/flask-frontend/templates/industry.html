@@ -1,84 +1,168 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Industry Summary: {{ sic_summary.sic_desc }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-</head>
-<body>
-    <header>
-        <h1>Industry Summary: {{ sic_summary.sic_desc }}</h1>
-        <nav>
-            <a href="{{ url_for('routes.home') }}">Home</a>
-        </nav>
-    </header>
+{% extends "main.html" %}
 
-    <section id="industry-summary">
-        <h2>Daily Filings for SIC {{ sic_summary.sic_code }}: {{ sic_summary.sic_desc }}</h2>
-        <p>Total Filings Today: {{ sic_summary.total_filings }}</p>
+{% block title %}Industry Summary: {{ sic_summary.sic_desc }}{% endblock %}
 
-        <div class="summary-section">
-            <!-- Filings by Type -->
-            <div class="summary-column">
-                <h3>Filings by Type:</h3>
-                <p>Total # Types: {{ sic_summary.by_type | length }}</p>
-                <ul>
-                    {% if sic_summary.by_type %}
-                        {% for type_dict in sic_summary.by_type[:10] %}
-                            <li>
-                                <strong>{{ type_dict.type }}</strong>: {{ type_dict.count }} 
-                                ({{ '%.2f' | format((type_dict.count / sic_summary.total_filings) * 100) }}%)
-                            </li>
-                        {% endfor %}
-                    {% else %}
-                        <li>No data available</li>
-                    {% endif %}
-                </ul>
-                <span class="collapsible-list" onclick="toggleContent('industryTypes')">Show All</span>
-                <ul id="industryTypes" class="content">
-                    {% for type_dict in sic_summary.by_type %}
+{% block content %}
+<main>
+    <h2>Daily Filings for SIC {{ sic_summary.sic_code }}: {{ sic_summary.sic_desc }}</h2>
+    <p>Total # Filings: {{ sic_summary.total_filings }}</p>
+
+    <!-- Industry Level Topic Analysis Plot -->
+    {% if sic_summary.topic_analysis_results and sic_summary.topic_analysis_results|length > 0 %}
+        {% set latest_run = sic_summary.topic_analysis_results[0] %}
+        <h3>Topic Analysis for Today (Analysis Date: {{ latest_run.analysis_date }})</h3>
+        <canvas id="topicChart" width="600" height="400"></canvas>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script>
+            document.addEventListener("DOMContentLoaded", function() {
+                // Prepare arrays for labels, weights, and tooltips.
+                var topicLabels = [
+                    {% for detail in latest_run.details %}
+                        "Topic {{ detail.topic_number }}",
+                    {% endfor %}
+                ];
+
+                var topicWeights = [
+                    {% for detail in latest_run.details %}
+                        {% set topic_data = detail.topic_json %}
+                        {{ topic_data.topic_weight }},
+                    {% endfor %}
+                ];
+
+                // Prepare tooltips: a list of key words for each topic.
+                var topicTooltips = [
+                    {% for detail in latest_run.details %}
+                        {% set topic_data = detail.topic_json %}
+                        "{{ topic_data.top_words | map(attribute='word') | join(', ') }}",
+                    {% endfor %}
+                ];
+
+                var ctx = document.getElementById('topicChart').getContext('2d');
+                var topicChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: topicLabels,
+                        datasets: [{
+                            label: 'Topic Weight',
+                            data: topicWeights,
+                            backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    title: function(context) {
+                                        // Show the topic label as title
+                                        return context[0].label;
+                                    },
+                                    label: function(context) {
+                                        // Show the weight and the key words in the tooltip
+                                        var weight = context.parsed.y;
+                                        var index = context.dataIndex;
+                                        var words = topicTooltips[index];
+                                        return 'Weight: ' + weight + ' | Top words: ' + words;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Topic Weight'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Topic'
+                                }
+                            }
+                        }
+                    }
+                });
+            });
+        </script>
+    {% else %}
+        <p>No topic analysis available for this industry.</p>
+    {% endif %}
+
+    <!-- Industry Summary Section -->
+    <div class="summary-section">
+
+        <!-- Filings by Type -->
+        <div class="summary-column">
+            <h3>Filings by Type</h3>
+            <p>Total # Types: {{ sic_summary.by_type | length }}</p>
+            <ul>
+                {% if sic_summary.by_type %}
+                    {% for type_dict in sic_summary.by_type[:10] %}
                         <li>
-                            <strong>{{ type_dict.type }}</strong>: {{ type_dict.count }} 
+                            <strong>
+                                <a href="{{ url_for('routes.filing_type_page', filing_type=type_dict.type.replace('/', '_')) }}">
+                                    {{ type_dict.type }}
+                                </a>
+                            </strong>: {{ type_dict.count }} 
                             ({{ '%.2f' | format((type_dict.count / sic_summary.total_filings) * 100) }}%)
                         </li>
                     {% endfor %}
-                </ul>
-            </div>
-
-            <!-- Filings by Company -->
-            <div class="summary-column">
-                <h3>Filings by Company:</h3>
-                <p>Total # Companies/Filers: {{ sic_summary.by_company | length }}</p>
-                <ul>
-                    {% if sic_summary.by_company %}
-                        {% for company_dict in sic_summary.by_company[:10] %}
+                {% else %}
+                    <li>No data available</li>
+                {% endif %}
+            </ul>
+            {% if sic_summary.by_type | length > 10 %}
+                <button class="collapsible-list" onclick="toggleContent('industryTypes')">Show All</button>
+                <div id="industryTypes" class="content">
+                    <ul>
+                        {% for type_dict in sic_summary.by_type[10:] %}
                             <li>
-                                <strong>{{ company_dict.company_name }}</strong>: {{ company_dict.count }} 
-                                ({{ '%.2f' | format((company_dict.count / sic_summary.total_filings) * 100) }}%)
+                                <strong>
+                                    <a href="{{ url_for('routes.filing_type_page', filing_type=type_dict.type.replace('/', '_')) }}">
+                                        {{ type_dict.type }}
+                                    </a>
+                                </strong>: {{ type_dict.count }} 
                             </li>
                         {% endfor %}
-                    {% else %}
-                        <li>No data available</li>
-                    {% endif %}
-                </ul>
-                <span class="collapsible-list" onclick="toggleContent('industryCompanies')">Show All</span>
-                <ul id="industryCompanies" class="content">
-                    {% for company_dict in sic_summary.by_company %}
+                    </ul>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Filings by Company -->
+        <div class="summary-column">
+            <h3>Filings by Company</h3>
+            <p>Total # Companies/Filers: {{ sic_summary.by_company | length }}</p>
+            <ul>
+                {% if sic_summary.by_company %}
+                    {% for company_dict in sic_summary.by_company[:10] %}
                         <li>
                             <strong>{{ company_dict.company_name }}</strong>: {{ company_dict.count }} 
                             ({{ '%.2f' | format((company_dict.count / sic_summary.total_filings) * 100) }}%)
                         </li>
                     {% endfor %}
-                </ul>
-            </div>
+                {% else %}
+                    <li>No data available</li>
+                {% endif %}
+            </ul>
+            {% if sic_summary.by_company | length > 10 %}
+                <button class="collapsible-list" onclick="toggleContent('industryCompanies')">Show All</button>
+                <div id="industryCompanies" class="content">
+                    <ul>
+                        {% for company_dict in sic_summary.by_company[10:] %}
+                            <li>
+                                <strong>{{ company_dict.company_name }}</strong>: {{ company_dict.count }} 
+                                ({{ '%.2f' | format((company_dict.count / sic_summary.total_filings) * 100) }}%)
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
         </div>
-    </section>
-
-    <!-- Bootstrap and jQuery -->
-    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
-
-    <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
-</body>
-</html>
+    </div>
+</main>
+{% endblock %}

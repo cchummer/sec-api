@@ -1,0 +1,138 @@
+{% extends "main.html" %}
+
+{% block title %}Filing Details - {{ filing_info['filing_id'] }}{% endblock %}
+
+{% block content %}
+<main>
+    <h2>Individual Filing Details</h2>
+
+    <!-- General Filing Information -->
+    <div class="summary-section">
+        <h3>General Information</h3>
+        <table class="summary-table">
+            <tbody>
+                {% for key, value in filing_info.items() if key not in ['full_cached', 'TextDocument', 'TextSectionFacts', 'FinancialReport', 'FinancialReportFacts', 'HoldingsReport', 'OtherManagers', 'HoldingsEntries', 'Event8K', 'Event8KItems', 'Form4IssuerInfo', 'Form4OwnerInfo', 'Form4NonDerivTransactionInfo', 'PDFDocument', 'PDFPageText'] %}
+                <tr>
+                    <th>{{ key | replace('_', ' ') | title }}</th>
+                    <td>{{ value }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- TextDocument Section -->
+    {% if filing_info.get('TextDocument') %}
+    <div class="summary-section">
+        <button class="accordion" onclick="toggleContent('TextDocument_block')">Text Documents</button>
+        <div class="content" id="TextDocument_block">
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th>Document ID</th>
+                        <th>Document Name</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for document in filing_info['TextDocument'] %}
+                    <tr>
+                        <td>{{ document[0] }}</td>
+                        <td>{{ document[2] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- TextSectionFacts Section -->
+    {% if filing_info.get('TextSectionFacts') %}
+    <div class="summary-section">
+        <button class="accordion" onclick="toggleContent('TextSectionFacts_block')">Text Section Facts</button>
+        <div class="content" id="TextSectionFacts_block">
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th>Text Document ID</th>
+                        <th>Section Name</th>
+                        <th>Section Type</th>
+                        <th>Text</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fact in filing_info['TextSectionFacts'] %}
+                    <tr>
+                        <td>{{ fact[1] }}</td>
+                        <td>{{ fact[2] }}</td>
+                        <td>{{ fact[3] }}</td>
+                        <td>{{ fact[4] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 8-K Cover Page (Event8K table) Section -->
+    {% if filing_info.get('Event8K') %}
+    <div class="summary-section">
+        <button class="accordion" onclick="toggleContent('Event8K_block')">8-K Cover Page Details</button>
+        <div class="content" id="Event8K_block">
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th>Event ID</th>
+                        <th>Event Info</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{{ filing_info['Event8K']['event_id'] }}</td>
+                        <td>
+                            {% if filing_info['Event8K']['event_info'] %}
+                                <ul>
+                                    {% for key, value in filing_info['Event8K']['event_info'].items() %}
+                                        <li><strong>{{ key | replace('_', ' ') | title }}:</strong> {{ value }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p>No event details available.</p>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Event8KItems Section -->
+    {% if filing_info.get('Event8KItems') %}
+    <div class="summary-section">
+        <button class="accordion" onclick="toggleContent('Event8KItems_block')">8-K Items</button>
+        <div class="content" id="Event8KItems_block">
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th>Event ID</th>
+                        <th>Item ID</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in filing_info['Event8KItems'] %}
+                    <tr>
+                        <td>{{ item[1] }}</td>
+                        <td>{{ item[0] }}</td>
+                        <td>{{ item[2] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</main>
+{% endblock %}
