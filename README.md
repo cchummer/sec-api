@@ -1,4 +1,6 @@
 # sec-api
+
+UPDATE 6/2025: See 2.0 subdir
 Updated 5/1/2024
 
 This project is my first relatively deep venture into webscraping + web-document parsing in Python. I have chosen not to organize it into a package or even into objects/classes but instead leave each method, heavily commented, in a somehwat modular form to fit whatever use-case the reader may have. The jupyter notbooks were written and tested in Google Colab but for the most part the code has also been tested on locally installed Python environments on Mac OS and Linux. I come from a Windows C coding background so forgive my for loops and other syntax preferences. Working on being more "pythonic".
