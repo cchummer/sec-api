@@ -1,0 +1,6 @@
+FROM ollama/ollama:0.8.0-rc0
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+# Copy startup script 
+COPY init_scripts/ollama_startup.sh ./
+RUN chmod +x ollama_startup.sh

@@ -1,0 +1,2 @@
+# Run daily at 3 AM local
+0 3 * * * . /etc/environment; /usr/local/bin/python /code/trigger_daily_flow.py >> /var/log/cron.log 2>&1

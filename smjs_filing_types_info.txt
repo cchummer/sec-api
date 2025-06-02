@@ -1,0 +1,236 @@
+(extract from https://github.com/aws/sagemaker-jumpstart-industry-pack/blob/main/docs/source/notebooks/finance/notebook1/SEC_Retrieval_Summarizer_Scoring.rst) 
+
+SEC Forms 10-K/10-Q
+~~~~~~~~~~~~~~~~~~~
+
+10-K/10-Q forms are quarterly reports required to be filed by companies.
+They contain full disclosure of business conditions for the company and
+also require forward-looking statements of future prospects, usually
+written into a section known as the “Management Discussion & Analysis”
+section. There also can be a section called “Forward-Looking
+Statements”. For more information, see `Form
+10-K <https://www.investor.gov/introduction-investing/investing-basics/glossary/form-10-k>`__
+in the *Investor.gov webpage*.
+
+Each year firms file three 10-Q forms (quarterly reports) and one 10-K
+(annual report). Thus, there are in total four reports each year. The
+structure of the forms is displayed in a table of contents.
+
+The SEC filing retrieval supports the downloading and parsing of 10-K,
+10-Q, 8-K, 497, 497K, S-3ASR and N-1A, seven form types for the tickers
+or CIKs specified by the user. The following block of code will download
+full text of the forms and convert it into a dataframe format using a
+SageMaker session. The code is self-explanatory, and offers customized
+options to the users.
+
+**Technical notes**:
+
+1. The data loader accesses a container to process the request. There
+   might be some latency when starting up the container, which accounts
+   for a few initial minutes. The actual filings extraction occurs after
+   this.
+2. The data loader only supports processing jobs with only one instance
+   at the moment.
+3. Users are not charged for the waiting time used when the instance is
+   initializing (this takes 3-5 minutes).
+4. The name of the processing job is shown in the run time log.
+5. You can also access the processing job from the `SageMaker
+   console <https://console.aws.amazon.com/sagemaker>`__. On the left
+   navigation pane, choose Processing, Processing job.
+
+Users may update any of the settings in the ``data_loader`` section of
+the code block below, and in the ``dataset_config`` section. For a very
+long list of tickers or CIKs, the job will run for a while, and the
+``...`` stream will indicate activity as it proceeds.
+
+| **NOTE**: We recommend that you use CIKs as the input. The tickers are
+  internally converted to CIKs according to this `mapping
+  file <https://www.sec.gov/include/ticker.txt>`__.
+| One ticker can map to multiple CIKs, but this solution supports only
+  the latest ticker to CIK mapping. Make sure to provide the old CIKs in
+  the input when you want historical filings.
+
+The following code block shows how to use the SEC Retriever API. You
+specify system resources (or just choose the defaults below). Also
+specify the tickers needed, the SEC forms needed, the date range, and
+the location and name of the file in S3 where the curated data file will
+be stored in CSV format. The output will shows the runtime log from the
+SageMaker processing container and indicates when it is completed.
+
+   **Important**: This example notebook uses data obtained from the SEC
+   EDGAR database. You are responsible for complying with EDGAR’s access
+   terms and conditions located in the `Accessing EDGAR
+   Data <https://www.sec.gov/os/accessing-edgar-data>`__ page.
+
+.. code:: ipython3
+
+    %%time
+
+    dataset_config = EDGARDataSetConfig(
+        tickers_or_ciks=['amzn','goog', '27904', 'FB'],  # list of stock tickers or CIKs
+        form_types=['10-K', '10-Q'],                     # list of SEC form types
+        filing_date_start='2019-01-01',                  # starting filing date
+        filing_date_end='2020-12-31',                    # ending filing date
+        email_as_user_agent='test-user@test.com')        # user agent email
+
+    data_loader = DataLoader(
+        role=sagemaker.get_execution_role(),    # loading job execution role
+        instance_count=1,                       # instances number, limit varies with instance type
+        instance_type='ml.c5.2xlarge',          # instance type
+        volume_size_in_gb=30,                   # size in GB of the EBS volume to use
+        volume_kms_key=None,                    # KMS key for the processing volume
+        output_kms_key=None,                    # KMS key ID for processing job outputs
+        max_runtime_in_seconds=None,            # timeout in seconds. Default is 24 hours.
+        sagemaker_session=sagemaker.Session(),  # session object
+        tags=None)                              # a list of key-value pairs
+
+    data_loader.load(
+        dataset_config,
+        's3://{}/{}/{}'.format(bucket, sec_processed_folder, 'output'),     # output s3 prefix (both bucket and folder names are required)
+        'dataset_10k_10q.csv',                                              # output file name
+        wait=True,
+        logs=True)
+
+Output
+^^^^^^
+
+The output of the DataLoader processing job is a dataframe. This job
+includes 32 filings (4 companies for 8 quarters). The CSV file is
+downloaded from S3 and then read into a dataframe, as shown in the
+following few code blocks.
+
+The filing date comes within a month of the end date of the reporting
+period. The filing date is displayed in the dataframe. The column
+``"text"`` contains the full plain text of the filing but the tables are
+not extracted. The values in the tables in the filings are balance-sheet
+and income-statement data (numeric and tabular) and are easily available
+elsewhere as they are reported in numeric databases. The last column
+(``"mdna"``) of the dataframe comprises the Management Discussion &
+Analysis section, which is also included in the ``"text"`` column.
+
+.. code:: ipython3
+
+    client = boto3.client('s3')
+    client.download_file(bucket, '{}/{}/{}'.format(sec_processed_folder, 'output', 'dataset_10k_10q.csv'), 'dataset_10k_10q.csv')
+    data_frame_10k_10q = pd.read_csv('dataset_10k_10q.csv')
+    data_frame_10k_10q
+
+As an example of a clean parse, print out the text of the first filing.
+
+.. code:: ipython3
+
+    print(data_frame_10k_10q.text[0])
+
+To read the MD&A section, use the following code to print out the
+section for the second filing in the dataframe.
+
+.. code:: ipython3
+
+    print(data_frame_10k_10q.mdna[1])
+
+SEC Form 8-K
+~~~~~~~~~~~~
+
+This form is filed for material changes in business conditions. This
+`Form 8-K
+page <https://www.sec.gov/fast-answers/answersform8khtm.html>`__
+describes the form requirements and various conditions for publishing a
+8-K filing. Because there is no set cadence to these filings, several
+8-K forms might be filed within a year, depending on how often a company
+experiences material changes in business conditions.
+
+The API call below is the same as for the 10-K forms; simply change the
+form type ``8-K`` to ``10-K``.
+
+.. code:: ipython3
+
+    %%time
+
+    dataset_config = EDGARDataSetConfig(
+        tickers_or_ciks=['amzn','goog', '27904', 'FB'],  # list of stock tickers or CIKs
+        form_types=['8-K'],                              # list of SEC form types
+        filing_date_start='2019-01-01',                  # starting filing date
+        filing_date_end='2020-12-31',                    # ending filing date
+        email_as_user_agent='test-user@test.com')        # user agent email
+
+    data_loader = DataLoader(
+        role=sagemaker.get_execution_role(),    # loading job execution role
+        instance_count=1,                       # instances number, limit varies with instance type
+        instance_type='ml.c5.2xlarge',          # instance type
+        volume_size_in_gb=30,                   # size in GB of the EBS volume to use
+        volume_kms_key=None,                    # KMS key for the processing volume
+        output_kms_key=None,                    # KMS key ID for processing job outputs
+        max_runtime_in_seconds=None,            # timeout in seconds. Default is 24 hours.
+        sagemaker_session=sagemaker.Session(),  # session object
+        tags=None)                              # a list of key-value pairs
+
+    data_loader.load(
+        dataset_config,
+        's3://{}/{}/{}'.format(bucket, sec_processed_folder, 'output'),    # output s3 prefix (both bucket and folder names are required)
+        'dataset_8k.csv',                                                  # output file name
+        wait=True,
+        logs=True)
+
+.. code:: ipython3
+
+    client = boto3.client('s3')
+    client.download_file(bucket, '{}/{}/{}'.format(sec_processed_folder, 'output', 'dataset_8k.csv'), 'dataset_8k.csv')
+    data_frame_8k = pd.read_csv('dataset_8k.csv')
+    data_frame_8k
+
+As noted, 8-K forms do not have a fixed cadence, and they depend on the
+number of times a company changes the material. Therefore, the number of
+forms varies over time.
+
+Next, print the plain text of the first 8-K form in the dataframe.
+
+.. code:: ipython3
+
+    print(data_frame_8k.text[0])
+
+Other SEC Forms
+~~~~~~~~~~~~~~~
+
+We also support SEC forms 497, 497K, S-3ASR, N-1A, 485BXT, 485BPOS,
+485APOS, S-3, S-3/A, DEF 14A, SC 13D and SC 13D/A.
+
+SEC Form 497
+^^^^^^^^^^^^
+
+Mutual funds are required to file Form 497 to disclose any information
+that is material for investors. Funds file their prospectuses using this
+form as well as proxy statements. The form is also used for Statements
+of Additional Information (SAI). The forward-looking information in Form
+497 comprises the detailed company history, financial statements, a
+description of products and services, an annual review of the
+organization, its operations, and the markets in which the company
+operates. Much of this data is usually audited so is of high quality.
+For more information, see `SEC Form
+497 <https://www.investopedia.com/terms/s/sec-form-497.asp>`__.
+
+SEC Form 497K
+^^^^^^^^^^^^^
+
+This is a summary prospectus. It describes the fees and expenses of the
+fund, its principal investment strategies, principal risks, past
+performance if any, and some administrative information. Many such forms
+are filed for example, in Q4 of 2020 a total of 5,848 forms of type 497K
+were filed.
+
+SEC Form S-3ASR
+^^^^^^^^^^^^^^^
+
+The S-3ASR is an automatic shelf registration statement which is
+immediately effective upon filing for use by well-known seasoned issuers
+to register unspecified amounts of different specified types of
+securities. This Registration Statement is for the registration of
+securities under the Securities Act of 1933.
+
+SEC Form N-1A
+^^^^^^^^^^^^^
+
+This registration form is required for establishing open-end management
+companies. The form can be used for registering both open-end mutual
+funds and open-end exchange traded funds (ETFs). For more information,
+see `SEC Form
+N-1A <https://www.investopedia.com/terms/s/sec-form-n-1a.asp>`__.

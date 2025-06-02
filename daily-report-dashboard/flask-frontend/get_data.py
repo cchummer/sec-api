@@ -13,7 +13,10 @@ class DataCache:
     fin_summary = {} # Will hold summary data regarding financial report type filings, organized by specific filing type
     prospectus_summary = {} # Will hold summary data regarding prospectus summary type filings, organized by specific filing type
     events_summary = {} # Will hold summary data regarding current event filings, organized by specific filing type
-    indiv_filings = {}
+    sec_staff_summary = {} # Will hold summary data regarding SEC staff action or letter filings, organized by specific filing type (either letter or action)
+    proxy_summary = {} # Will hold summary data regarding proxy filings, organized by specific filing type
+    indiv_filings = {} # Will hold data on specific filings, such as their text sections 
+    industry_text_sections = {} # Will hold a list of text sections for each industry / SIC code
 
 data_cache = DataCache()
 
@@ -125,54 +128,6 @@ def refresh_sql_summary():
     else:
         print('sql_summary already populated, skipping refresh.')
 
-def get_industry_analysis(sic, conn):
-    """
-    Fetches analysis results for the given industry, if any exist in the DB
-    """
-    print(f'Fetching industry analysis results for SIC: {sic}.')
-
-    cursor = conn.cursor()
-
-    # We filter on description = 'industryXindustry' to pick only industry-level analysis.
-    cursor.execute("""
-        SELECT topic_analysis_id, analysis_date, model_type, n_topics, n_top_words, description
-        FROM TopicAnalysis
-        WHERE sic_code = ? AND description = 'industryXindustry'
-        ORDER BY analysis_date DESC;
-    """, (sic,))
-    topic_analysis_runs = cursor.fetchall()
-
-    print(f'Successfully queried TopicAnalysis table for SIC {sic}.')
-
-    topic_analysis_results = []
-    for row in topic_analysis_runs:
-        topic_analysis_id = row[0]
-        # For each run, fetch its topic details from TopicDetails.
-        cursor.execute("""
-            SELECT topic_number, topic_json
-            FROM TopicDetails
-            WHERE topic_analysis_id = ?
-            ORDER BY topic_number;
-        """, (topic_analysis_id,))
-        details = cursor.fetchall()
-        details_list = [
-            {"topic_number": d[0], "topic_json": d[1]}
-            for d in details
-        ]
-        run_dict = {
-            "topic_analysis_id": topic_analysis_id,
-            "analysis_date": row[1],
-            "model_type": row[2],
-            "n_topics": row[3],
-            "n_top_words": row[4],
-            "description": row[5],
-            "details": details_list
-        }
-        topic_analysis_results.append(run_dict)
-        print(f'Successfully processed TopicDetails table data for topic ID {topic_analysis_id}.')
-
-    return topic_analysis_results
-
 def refresh_sic_summary(sic):
     """Fetch and cache SIC summary counts."""
     print(f'Refreshing sic_summary dictionary for SIC: {sic}.')
@@ -207,16 +162,12 @@ def refresh_sic_summary(sic):
                         GROUP BY company_name;
                     """, (sic,)).fetchall()
 
-                    # Get industry analysis results if any exist
-                    industry_topics = get_industry_analysis(sic, conn)
-
                     data_cache.sic_summary[sic] = {
                         'sic_desc': result[0],
                         'sic_code': result[1],
                         'total_filings': result[2],
                         'by_type': [{'type': row[0], 'count': row[1]} for row in filings_by_type],
-                        'by_company': [{'company_name': row[0], 'count': row[1]} for row in filings_by_company],
-                        'topic_analysis_results': industry_topics
+                        'by_company': [{'company_name': row[0], 'count': row[1]} for row in filings_by_company]
                     }
                 else:
                     data_cache.sic_summary[sic] = {
@@ -252,7 +203,8 @@ def refresh_fin_reports_summary(filing_type):
                         mf.company_name AS CompanyName,
                         mf.filing_id AS FilingID,
                         td.section_doc AS TextDocumentName,
-                        tsf.section_name AS TextSectionName
+                        tsf.section_name AS TextSectionName,
+                        tsf.section_type AS SectionType
                     FROM MasterFiling mf
                     LEFT JOIN TextDocument td ON mf.filing_id = td.filing_id
                     LEFT JOIN TextSectionFacts tsf ON td.text_document_id = tsf.text_document_id
@@ -293,6 +245,7 @@ def refresh_fin_reports_summary(filing_type):
                     if row[4]:
                         fin_summary_data[filing_id]['text_sections'].append({
                             'section_name': row[4],
+                            'section_type': row[5],
                             'doc_name': row[3]
                         })
 
@@ -474,17 +427,172 @@ def refresh_events_summary(filing_type):
         
         except Exception as e:
             print(f"Error fetching current events filings summary for type {filing_type}: {e}.")
-            data_cache.events_summary = []  # Empty list if error occurs
+            data_cache.events_summary[filing_type] = []  # Empty list if error occurs
 
     else:
         print(f'events_summary already populated for type {filing_type}, skipping refresh.')
+
+def refresh_sec_staff_summary(filing_type):
+    '''
+    Fetch and cache SEC staff action/letter filing info summary.
+    '''
+
+    if filing_type not in data_cache.sec_staff_summary:  # Only query if this filing type is not in cache
+        try:
+            conn = get_db_connection()
+            if conn:
+                cursor = conn.cursor()
+
+                # Query for PDF documents related to SEC staff filings
+                cursor.execute("""
+                    SELECT mf.sic_desc, mf.company_name, mf.filing_id, pd.pdf_name, pd.doc_type, pd.metadata
+                    FROM MasterFiling mf
+                    JOIN PDFDocument pd ON mf.filing_id = pd.filing_id
+                    WHERE mf.type = ?
+                    ORDER BY mf.sic_desc, mf.company_name;
+                """, (filing_type,))
+                pdf_doc_results = cursor.fetchall()
+
+                # Prepare data for the summary cache
+                sec_staff_summary_data = {}
+
+                # Organize PDF's by filing_id
+                for row in pdf_doc_results:
+                    filing_id = row[2]
+                    if filing_id not in sec_staff_summary_data:
+                        sec_staff_summary_data[filing_id] = {
+                            'industry': row[0] if row[0] else "Unknown",
+                            'company_name': row[1],
+                            'filing_id': filing_id,
+                            'pdf_docs': []
+                        }
+                    if row[3]:  # Add PDF details if available
+                        sec_staff_summary_data[filing_id]['pdf_docs'].append({
+                            'doc_name': row[3],
+                            'doc_type': row[4],
+                            'metadata': row[5]
+                        })
+
+                # Convert the dictionary to a list for the final summary
+                sec_staff_summary_data_list = list(sec_staff_summary_data.values())
+
+                # Store the fetched data in the cache
+                data_cache.sec_staff_summary[filing_type] = sec_staff_summary_data_list
+
+                conn.close()
+                print(f'Refreshed sec_staff_summary for filing type {filing_type}.')
+
+        except Exception as e:
+            print(f"Error fetching SEC staff filings summary for type {filing_type}: {e}.")
+            data_cache.sec_staff_summary[filing_type] = []  # Empty list if error occurs
+
+def refresh_proxy_summary(filing_type):
+    '''
+    Fetch and cache proxy filing summary data.
+    '''
+
+    if filing_type not in data_cache.proxy_summary:  # Only query if this filing type is not in cache
+        try:
+            conn = get_db_connection()
+            if conn:
+                cursor = conn.cursor()
+
+                # Query for Text Sections
+                cursor.execute("""
+                    SELECT 
+                        mf.sic_desc AS Industry,
+                        mf.company_name AS CompanyName,
+                        mf.filing_id AS FilingID,
+                        td.section_doc AS TextDocumentName,
+                        tsf.section_name AS TextSectionName,
+                        tsf.section_type AS SectionType
+                    FROM MasterFiling mf
+                    LEFT JOIN TextDocument td ON mf.filing_id = td.filing_id
+                    LEFT JOIN TextSectionFacts tsf ON td.text_document_id = tsf.text_document_id
+                    WHERE mf.type = ?
+                    ORDER BY mf.sic_desc, mf.company_name;
+                """, (filing_type,))
+                text_section_results = cursor.fetchall()
+
+                # Prepare data for the summary cache
+                proxy_summary_data = {}
+
+                # Organize text sections by filing_id
+                for row in text_section_results:
+                    filing_id = row[2]
+                    if filing_id not in proxy_summary_data:
+                        proxy_summary_data[filing_id] = {
+                            'industry': row[0] if row[0] else "Unknown",
+                            'company_name': row[1],
+                            'filing_id': filing_id,
+                            'text_sections': []
+                        }
+                    if row[4]:  # Add text section details if available
+                        proxy_summary_data[filing_id]['text_sections'].append({
+                            'section_name': row[4],
+                            'section_type': row[5],
+                            'doc_name': row[3]
+                        })
+
+                # Convert the dictionary to a list for the final summary
+                proxy_summary_data_list = list(proxy_summary_data.values())
+
+                # Store the fetched data in the cache
+                data_cache.proxy_summary[filing_type] = proxy_summary_data_list
+
+                conn.close()
+                print(f'Refreshed proxy_summary for filing type {filing_type}.')
+
+        except Exception as e:
+            print(f"Error fetching proxy filings summary for type {filing_type}: {e}.")
+            data_cache.proxy_summary[filing_type] = []  # Empty list if error occurs
+
+def load_financial_filing_data(filing_id, conn):
+    '''
+    Loads data for an individual financial report filing (10-Q, etc) into the data_cache.
+    '''
+    print(f'Attempting to load financial report filing data for filing_id {filing_id}.')
+    cursor = conn.cursor()
+
+    # Load TextDocument data
+    cursor.execute("SELECT * FROM TextDocument WHERE filing_id = ?", (filing_id,))
+    text_documents = cursor.fetchall()
+    data_cache.indiv_filings[filing_id]['TextDocument'] = text_documents
+
+    # Load TextSectionFacts data
+    cursor.execute("""
+        SELECT tsf.* 
+        FROM TextSectionFacts tsf
+        JOIN TextDocument td ON tsf.text_document_id = td.text_document_id
+        WHERE td.filing_id = ?
+    """, (filing_id,))
+    text_section_facts = cursor.fetchall()
+    data_cache.indiv_filings[filing_id]['TextSectionFacts'] = text_section_facts
+
+    print(f'Got filing_id {filing_id} text documents and sections.')
+
+    # And now financial reports and facts
+    cursor.execute("SELECT * FROM FinancialReport WHERE filing_id = ?", (filing_id,))
+    fin_reports = cursor.fetchall()
+    data_cache.indiv_filings[filing_id]['FinancialReport'] = fin_reports
+
+    cursor.execute("""
+        SELECT frf.*
+        FROM FinancialReportFacts frf
+        JOIN FinancialReport fr on frf.financial_report_id = fr.financial_report_id
+        WHERE fr.filing_id = ?
+    """, (filing_id,))
+    fin_report_facts = cursor.fetchall()
+    data_cache.indiv_filings[filing_id]['FinancialReportFacts'] = fin_report_facts
+
+    print(f'Got filing_id {filing_id} financial reports and facts.')
+    print(f'Loaded financial report filing data for filing_id {filing_id}.')
 
 def load_event_filing_data(filing_id, conn):
     """
     Loads data for an individual event filing (8-K, etc.) into the data_cache.
     """
     print(f'Attempting to load 8-K/event filing data for filing_id {filing_id}.')
-
     cursor = conn.cursor()
 
     # Load TextDocument data
@@ -511,7 +619,7 @@ def load_event_filing_data(filing_id, conn):
         event_id, int_filing_id, event_info_str = event_8k_row
         #try:
         if event_info_str:
-            print(f"event_info_str: {event_info_str}.")
+            #print(f"event_info_str: {event_info_str}.")
             event_info = json.loads(event_info_str)
         else:
             print(f"Failed to find event_info_str.")
@@ -541,12 +649,11 @@ def load_event_filing_data(filing_id, conn):
 
     print(f'Loaded 8-K/event filing data for filing_id {filing_id}.')
 
-def load_prospectus_filing_data(filing_id, conn):
+def load_text_filing_data(filing_id, conn):
     """
-    Loads data for an individual prospectus summary filing (S-1, etc.) into the data_cache.
+    Loads data for an individual filing comprised of only TextDocument + TextSectionFacts dat (S-1, DEF 14A, etc) into the data_cache.
     """
-    print(f'Attempting to load prospectus summary filing data for filing_id {filing_id}.')
-
+    print(f'Attempting to load filing text data for filing_id {filing_id}.')
     cursor = conn.cursor()
 
     # Load TextDocument data
@@ -564,8 +671,33 @@ def load_prospectus_filing_data(filing_id, conn):
     text_section_facts = cursor.fetchall()
     data_cache.indiv_filings[filing_id]['TextSectionFacts'] = text_section_facts
 
-    print(f'Got filing_id {filing_id} prospectus text documents and sections.')
-    print(f'Loaded prospectus summary filing data filing_id {filing_id}.')
+    print(f'Got filing_id {filing_id} text documents and sections.')
+    print(f'Loaded text data for filing_id {filing_id}.')
+
+
+def load_sec_staff_filing_data(filing_id, conn):
+    '''
+    Loads data for an individual SEC staff action or SEC staff letter filing type. At the moment, is just text from PDFs. 
+    '''
+    print(f'Attempting to load SEC staff action/letter filing data for filing_id {filing_id}.')
+    cursor = conn.cursor()
+
+    # Load PDFDocument and PDFPageText 
+    cursor.execute("SELECT * FROM PDFDocument WHERE filing_id = ?", (filing_id,))
+    pdf_docs = cursor.fetchall()
+    data_cache.indiv_filings[filing_id]['PDFDocument'] = pdf_docs
+
+    cursor.execute("""
+        SELECT *
+        FROM PDFPageText ppt
+        JOIN PDFDocument pd on ppt.pdf_id = pd.pdf_id
+        WHERE pd.filing_id = ?
+    """, (filing_id,))
+    pdf_pages = cursor.fetchall()
+    data_cache.indiv_filings[filing_id]['PDFPageText'] = pdf_pages
+
+    print(f'Got filing_id {filing_id} PDF documents and pages.')
+    print(f'Loaded SEC staff action/letter filing data for filing_id {filing_id}.')
 
 def get_masterfiling_info(filing_id):
     """Fetch and cache MasterFiling info for an individual filing."""
@@ -637,18 +769,25 @@ def get_filing_data(filing_id):
                 filing_type_to_loader = defaultdict(
                     lambda: None,  # Default to None for unsupported types
                     {
-                        #'10-Q': load_financial_filing_data,
-                        #'10-K': load_financial_filing_data,
-                        #'6-K': load_financial_filing_data,
+                        '10-Q': load_financial_filing_data,
+                        '10-Q/A': load_financial_filing_data,
+                        '10-K': load_financial_filing_data,
+                        '10-K/A': load_financial_filing_data,
+                        '6-K': load_financial_filing_data,
+                        '6-K/A': load_financial_filing_data,
                         #'13F-HR': load_holdings_filing_data,
                         #'13F-NT': load_holdings_filing_data,
                         '8-K': load_event_filing_data,
                         '8-K/A': load_event_filing_data,
-                        'S-1': load_prospectus_filing_data,
-                        'S-1/A': load_prospectus_filing_data,
-                        'S-3': load_prospectus_filing_data,
-                        'S-3/A': load_prospectus_filing_data
-                        # Add other mappings as needed
+                        'S-1': load_text_filing_data,
+                        'S-1/A': load_text_filing_data,
+                        'S-3': load_text_filing_data,
+                        'S-3/A': load_text_filing_data,
+                        'DEF 14A': load_text_filing_data,
+                        'DEFA14A': load_text_filing_data,
+                        'DEF 14A/A': load_text_filing_data,
+                        'SEC STAFF ACTION': load_sec_staff_filing_data,
+                        'SEC STAFF LETTER': load_sec_staff_filing_data
                     }
                 )
 
@@ -668,3 +807,33 @@ def get_filing_data(filing_id):
 
     else:
         print(f'indiv_filings dictionary already fully populated for filing_id {filing_id}, skipping refresh.')
+
+def get_industry_text_sections(sic):
+    '''
+    Attempts to retrieve and cache, in a list, all text sections of filings belonging to the specified industry.
+    '''
+    if sic not in data_cache.industry_text_sections:  # Only query if this SIC is not in cache
+        print(f'Attempting to grab + cache text sections for new industry: {sic}.')
+        try:
+            conn = get_db_connection()
+            if conn:
+                cursor = conn.cursor()
+
+                cursor.execute("""
+                    SELECT tsf.*
+                    FROM TextSectionFacts tsf
+                    LEFT JOIN TextDocument td on tsf.text_document_id = td.text_document_id
+                    LEFT JOIN MasterFiling mf on td.filing_id = mf.filing_id
+                    WHERE mf.sic_code = ?
+                """, (sic,))
+                text_section_results = cursor.fetchall()
+
+                # Store fetched results
+                data_cache.industry_text_sections[sic] = text_section_results
+                conn.close()
+
+                print(f'Cached text sections for SIC {sic}.')
+
+        except Exception as e:
+            print(f"Error fetching text sections for SIC {sic}: {e}.")
+            data_cache.industry_text_sections[sic] = []  # Empty list if error occurs

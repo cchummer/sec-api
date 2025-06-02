@@ -1,0 +1,21 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+venv/
+.env
+
+# Git and editor metadata
+.git/
+.gitignore
+.DS_Store
+
+# Test reports, logs, etc.
+*.log
+*.sqlite3
+*.db
+
+# Dependency caches
+*.egg-info/
+pip-wheel-metadata/

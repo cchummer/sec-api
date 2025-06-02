@@ -1,0 +1,24 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+
+# Environment variables
+.env
+
+# SQLite or other local dev DBs
+*.sqlite3
+*.db
+
+# Logs
+*.log
+
+# IDE/editor configs
+.vscode/
+.idea/
+.DS_Store
+
+# Docker artifacts
+*.tar

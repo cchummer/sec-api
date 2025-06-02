@@ -14,7 +14,17 @@
                 {% for key, value in filing_info.items() if key not in ['full_cached', 'TextDocument', 'TextSectionFacts', 'FinancialReport', 'FinancialReportFacts', 'HoldingsReport', 'OtherManagers', 'HoldingsEntries', 'Event8K', 'Event8KItems', 'Form4IssuerInfo', 'Form4OwnerInfo', 'Form4NonDerivTransactionInfo', 'PDFDocument', 'PDFPageText'] %}
                 <tr>
                     <th>{{ key | replace('_', ' ') | title }}</th>
-                    <td>{{ value }}</td>
+                    <td>
+                        {% if key == 'name_changes' and value %}
+                            <ul>
+                                {% for name_change in value.split(';;') %}
+                                    <li>{{ name_change }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            {{ value }}
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -38,6 +48,10 @@
                     <tr>
                         <td>{{ document[0] }}</td>
                         <td>{{ document[2] }}</td>
+                        <td>
+                            <button class="doc-summarize-btn" data-filing-id="{{ filing_info['filing_id'] }}" data-doc-id="{{ document[0] }}">Summarize</button>
+                            <p class="summary-result" id="summary_{{ document[0] }}"></p>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -49,24 +63,44 @@
     <!-- TextSectionFacts Section -->
     {% if filing_info.get('TextSectionFacts') %}
     <div class="summary-section">
-        <button class="accordion" onclick="toggleContent('TextSectionFacts_block')">Text Section Facts</button>
+        <button class="accordion" onclick="toggleContent('TextSectionFacts_block')">Text Sections</button>
         <div class="content" id="TextSectionFacts_block">
             <table class="summary-table">
                 <thead>
                     <tr>
-                        <th>Text Document ID</th>
+                        <th>Home Document ID</th>
+                        <th>Section ID</th>
                         <th>Section Name</th>
                         <th>Section Type</th>
-                        <th>Text</th>
+                        <th>Reveal Text</th>
+                        <th>Summarize</th>
+                        <th>Sentiment Summary</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for fact in filing_info['TextSectionFacts'] %}
                     <tr>
                         <td>{{ fact[1] }}</td>
+                        <td>{{ fact[0] }}</td>
                         <td>{{ fact[2] }}</td>
                         <td>{{ fact[3] }}</td>
-                        <td>{{ fact[4] }}</td>
+                        <td>
+                            <button class="show-text-btn" data-section-id="{{ fact[0] }}">Show Text</button>
+                        </td>
+                        <td>
+                            <button class="section-summarize-btn" data-filing-id="{{ filing_info['filing_id'] }}" data-section-id="{{ fact[0] }}">Summarize</button>
+                            <p class="summary-result" id="summary_{{ fact[0] }}"></p>
+                        </td>
+                        <td>
+                            <button class="section-sentiment-btn" data-filing-id="{{ filing_info['filing_id'] }}" data-section-id="{{ fact[0] }}">Sentiment Summary</button>
+                            <ul class="sentiment-result" id="sentiment_{{ fact[0] }}" style="display: none;"></ul>
+                        </td>
+                    </tr>
+                    <tr class="section-text-row" id="text_{{ fact[0] }}" style="display: none;">
+                        <td colspan="6">
+                            <strong>Text Content:</strong>
+                            <p>{{ fact[4] }}</p>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -134,5 +168,60 @@
         </div>
     </div>
     {% endif %}
+
+    <!-- PDFDocument Section -->
+    {% if filing_info.get('PDFDocument') %}
+    <div class="summary-section">
+        <button class="accordion" onclick="toggleContent('PDFDocument_block')">PDF Documents</button>
+        <div class="content" id="PDFDocument_block">
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th>Document Name</th>
+                        <th>Document Type</th>
+                        <th>Metadata</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in filing_info['PDFDocument'] %}
+                    <tr>
+                        <td>{{ item[2] }}</td>
+                        <td>{{ item[3] }}</td>
+                        <td>{{ item[4] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- PDFPageText Section -->
+    {% if filing_info.get('PDFPageText') %}
+    <div class="summary-section">
+        <button class="accordion" onclick="toggleContent('PDFPageText_block')">PDF Pages</button>
+        <div class="content" id="PDFPageText_block">
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th>Home Document ID</th>
+                        <th>Page Number</th>
+                        <th>Text</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in filing_info['PDFPageText'] %}
+                    <tr>
+                        <td>{{ item[1] }}</td>
+                        <td>{{ item[2] }}</td>
+                        <td>{{ item[3] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
 </main>
 {% endblock %}

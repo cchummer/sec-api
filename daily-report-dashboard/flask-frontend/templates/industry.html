@@ -7,90 +7,10 @@
     <h2>Daily Filings for SIC {{ sic_summary.sic_code }}: {{ sic_summary.sic_desc }}</h2>
     <p>Total # Filings: {{ sic_summary.total_filings }}</p>
 
-    <!-- Industry Level Topic Analysis Plot -->
-    {% if sic_summary.topic_analysis_results and sic_summary.topic_analysis_results|length > 0 %}
-        {% set latest_run = sic_summary.topic_analysis_results[0] %}
-        <h3>Topic Analysis for Today (Analysis Date: {{ latest_run.analysis_date }})</h3>
-        <canvas id="topicChart" width="600" height="400"></canvas>
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-        <script>
-            document.addEventListener("DOMContentLoaded", function() {
-                // Prepare arrays for labels, weights, and tooltips.
-                var topicLabels = [
-                    {% for detail in latest_run.details %}
-                        "Topic {{ detail.topic_number }}",
-                    {% endfor %}
-                ];
-
-                var topicWeights = [
-                    {% for detail in latest_run.details %}
-                        {% set topic_data = detail.topic_json %}
-                        {{ topic_data.topic_weight }},
-                    {% endfor %}
-                ];
-
-                // Prepare tooltips: a list of key words for each topic.
-                var topicTooltips = [
-                    {% for detail in latest_run.details %}
-                        {% set topic_data = detail.topic_json %}
-                        "{{ topic_data.top_words | map(attribute='word') | join(', ') }}",
-                    {% endfor %}
-                ];
-
-                var ctx = document.getElementById('topicChart').getContext('2d');
-                var topicChart = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: topicLabels,
-                        datasets: [{
-                            label: 'Topic Weight',
-                            data: topicWeights,
-                            backgroundColor: 'rgba(75, 192, 192, 0.6)',
-                            borderColor: 'rgba(75, 192, 192, 1)',
-                            borderWidth: 1
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            tooltip: {
-                                callbacks: {
-                                    title: function(context) {
-                                        // Show the topic label as title
-                                        return context[0].label;
-                                    },
-                                    label: function(context) {
-                                        // Show the weight and the key words in the tooltip
-                                        var weight = context.parsed.y;
-                                        var index = context.dataIndex;
-                                        var words = topicTooltips[index];
-                                        return 'Weight: ' + weight + ' | Top words: ' + words;
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                title: {
-                                    display: true,
-                                    text: 'Topic Weight'
-                                }
-                            },
-                            x: {
-                                title: {
-                                    display: true,
-                                    text: 'Topic'
-                                }
-                            }
-                        }
-                    }
-                });
-            });
-        </script>
-    {% else %}
-        <p>No topic analysis available for this industry.</p>
-    {% endif %}
+    <div>
+        <button class="industry-topic-btn" data-target-sic="{{ sic_summary.sic_code }}">Generate Industry Level Topic Analysis</button>
+        <p class="topic-analysis-result" id="topics_{{ sic_summary.sic_code }}"></p>
+    </div>
 
     <!-- Industry Summary Section -->
     <div class="summary-section">

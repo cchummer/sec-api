@@ -1,0 +1,184 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: mydatabase
+    volumes:
+      - ./init_scripts/prefect_init.sql:/docker-entrypoint-initdb.d/prefect_init.sql
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser -d mydatabase"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  prefect-server:
+    image: prefecthq/prefect:2.14.17-python3.10
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://myuser:mypassword@db:5432/prefect
+      PREFECT_API_URL: http://0.0.0.0:4200/api
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+      PREFECT_UI_API_URL: http://0.0.0.0:4200/api
+    ports:
+      - "4200:4200"
+      - "4201:4201"
+    command: prefect server start --host 0.0.0.0
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # prefect is python-based, so comes with pre-installed (no curl or common HTTP tools)
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health')\" || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  prefect-init:
+    build: .
+    entrypoint: ["/bin/bash", "-c"]
+    command: "/code/init_scripts/prefect_startup.sh"
+    depends_on:
+      db:
+        condition: service_healthy
+      prefect-server:
+        condition: service_healthy
+    environment:
+      PREFECT_FLOW_NAME: parser/process_day.py:full_process_day_flow
+      PREFECT_API_URL: http://prefect-server:4200/api
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/prefect-init.done"] # TODO: Consider using service_completed_successfully style health check since is just one time thing
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  ollama:
+    build:
+      context: .
+      dockerfile: Dockerfile.ollama 
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_NO_CUDA: "1"  # Force Metal acceleration for M1 Mac
+      OLLAMA_KEEP_ALIVE: "5m"  # Keep model loaded
+    healthcheck:
+      # Not python or common HTTP tools installed, rudimentary check...
+      test: ["CMD-SHELL", "curl -fsS http://localhost:11434/api/tags || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 12G
+        #reservations:
+        #  devices:
+        #    - driver: nvidia
+        #      count: 1
+        #      capabilities: [gpu]
+
+  ollama-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.ollama # Custom image, just has curl installed, for our startup script mainly
+    entrypoint: ["/bin/bash", "-c"]
+    command: "/app/ollama_startup.sh"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      INITIAL_MODELS: "mistral:7b-instruct-q4_K_M"  # Comma-separated list
+      OLLAMA_HOST: "http://ollama:11434"
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+        #reservations:
+        #  devices:
+        #    - driver: nvidia
+        #      count: 1
+        #      capabilities: [gpu]
+    restart: "no"
+
+  web:
+    build: .
+    command: > 
+      gunicorn
+      --bind :8000
+      --workers 1
+      --timeout 300
+      --chdir /code/flask_app
+      -c /code/flask_app/gunicorn_config.py
+      wsgi:app
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      prefect-server:
+        condition: service_healthy
+      prefect-init:
+        condition: service_healthy # TODO *See above note about considering service_completed_successfully*
+      ollama:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully # Or consider using healthcheck file for ollama-init also... would make them all service_healthy 
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api # TODO: Consider also passing flow_name since we use python lib anyways, then don't have to define flow_name again in config for python. Same for worker + scheduler...
+      #DATABASE_URL: postgresql+psycopg2://myuser:mypassword@db:5432/mydatabase # <- picks this up from python config
+      OLLAMA_ENDPOINT: http://ollama:11434
+      OLLAMA_MODEL: "mistral:7b-instruct-q4_K_M"
+    volumes:
+      - app_logs:/var/log/app
+
+  worker:
+    build: .
+    command: >
+      bash -c "
+      prefect work-pool inspect default-pool > /dev/null 2>&1 || prefect work-pool create default-pool --type process &&
+      prefect worker start --pool default-pool
+      "
+    depends_on:
+      db:
+        condition: service_healthy
+      prefect-server:
+        condition: service_healthy
+      prefect-init:
+        condition: service_healthy
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      #DATABASE_URL: postgresql+psycopg2://myuser:mypassword@db:5432/mydatabase # <- picks this up from python config
+    volumes:
+      - app_logs:/var/log/app
+
+  scheduler:
+    build: .
+    command: bash -c "printenv > /etc/environment && cron -f"
+    depends_on:
+      db:
+        condition: service_healthy
+      prefect-server:
+        condition: service_healthy
+      prefect-init:
+        condition: service_healthy
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      #DATABASE_URL: postgresql+psycopg2://myuser:mypassword@db:5432/mydatabase <- picks this up from python config
+      TZ: America/New_York
+    volumes:
+      - app_logs:/var/log/app
+
+volumes:
+  pgdata:
+  app_logs:
+  ollama_data:

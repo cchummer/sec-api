@@ -1,0 +1,92 @@
+{% extends "main.html" %}
+
+{% block title %}SEC Staff Action/Letter Filings Summary{% endblock %}
+
+{% block content %}
+<main>
+    <h2>SEC Staff ({{ filing_type }}) Filings</h2>
+    <div class="total-filings">
+        <p>Total # Filings: 
+            {% if sql_summary and sql_summary.parsed_by_type %}
+                {% set filing_count = sql_summary.parsed_by_type | selectattr('type', 'equalto', filing_type) | map(attribute='count') | sum %}
+                {{ filing_count }}
+            {% else %}
+                0
+            {% endif %}
+        </p>
+    </div>
+    <div class="summary-section">
+        <!-- Group by Industry -->
+        <div class="summary-column">
+            <h2>Filings by Industry</h2>
+            {% if summaries_data %}
+                {% for industry, filings in summaries_data|groupby('industry') %}
+                    {% set industry_index = loop.index %}
+                    <div class="industry-group" id="industry-{{ industry_index }}">
+                        <h3>{{ industry }} ({{ filings|length }})</h3>
+                        <ul>
+                            {% for filing in filings[:10] %}
+                                <li>
+                                    <strong>
+                                        <a href="{{ url_for('routes.view_filing', filing_id=filing['filing_id']) }}">
+                                            {{ filing['company_name'] }}
+                                        </a>
+                                    </strong>
+                                    <button class="accordion" onclick="toggleContent('industryFiler-{{ industry_index }}-{{ loop.index }}')">PDF Documents</button>
+                                    <ul id="industryFiler-{{ industry_index }}-{{ loop.index }}" class="content">
+                                        {% if filing.pdf_docs %}
+                                            {% for doc in filing.pdf_docs %}
+                                                <li>
+                                                    {{ doc.doc_name }} 
+                                                    <small>({{ doc.doc_type }})</small>
+                                                    - 
+                                                    <a href="{{ url_for('static', filename='documents/' + doc.doc_name) }}" target="_blank">{{ doc.doc_name }}</a>
+                                                </li>
+                                            {% endfor %}
+                                        {% else %}
+                                            <li>No PDF documents available.</li>
+                                        {% endif %}
+                                    </ul>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                        {% if filings|length > 10 %}
+                            <button class="collapsible-list" onclick="toggleContent('prospectusByIndustry-{{ industry_index }}')">Show All</button>
+                            <div id="prospectusByIndustry-{{ industry_index }}" class="content">
+                                <ul>
+                                    {% for filing in filings[10:] %}
+                                        <li>
+                                            <strong>
+                                                <a href="{{ url_for('routes.view_filing', filing_id=filing['filing_id']) }}">
+                                                    {{ filing['company_name'] }}
+                                                </a>
+                                            </strong>
+                                            <button class="accordion" onclick="toggleContent('industryFiler-{{ industry_index }}-{{ loop.index + 10 }}')">PDF Documents</button>
+                                            <ul id="industryFiler-{{ industry_index }}-{{ loop.index + 10 }}" class="content">
+                                                {% if filing.pdf_docs %}
+                                                    {% for doc in filing.pdf_docs %}
+                                                        <li>
+                                                            {{ doc.doc_name }} 
+                                                            <small>({{ doc.doc_type }})</small>
+                                                            - 
+                                                            <a href="{{ url_for('static', filename='documents/' + doc.doc_name) }}" target="_blank">{{ doc.doc_name }}</a>
+                                                        </li>
+                                                    {% endfor %}
+                                                {% else %}
+                                                    <li>No PDF documents available.</li>
+                                                {% endif %}
+                                            </ul>
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p>No filings available for today.</p>
+            {% endif %}
+        </div>
+    </div>
+</main>
+{% endblock %}

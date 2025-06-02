@@ -1,0 +1,32 @@
+# Core Flask & Web
+flask==3.0.2
+gunicorn==21.2.0
+#uvicorn
+
+# Database
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+pgvector==0.2.4  # For pgvector SQLAlchemy support
+
+# Ingestion orchestrator
+griffe==0.27.1
+prefect==2.14.17
+
+# PDF & Document Processing
+pymupdf==1.24.11
+# uu==1.1.0  # For uu encoding <- is in python standard lib < 3.12
+
+# Data Processing
+pandas==2.1.4
+beautifulsoup4==4.12.3  # For HTML parsing
+lxml==4.9.1
+
+# Text Processing
+unicodedata2==15.1.0  # Better Unicode handling
+regex==2023.12.25  # Advanced regex
+torch==2.7.0
+sentence-transformers==4.1.0
+
+# Utilities
+python-dotenv==1.0.0
+requests==2.31.0
