@@ -25,8 +25,11 @@ lxml==4.9.1
 unicodedata2==15.1.0  # Better Unicode handling
 regex==2023.12.25  # Advanced regex
 torch==2.7.0
+nltk==3.9.1
+transformers==4.52.3
 sentence-transformers==4.1.0
 
 # Utilities
 python-dotenv==1.0.0
+python-dateutil
 requests==2.31.0

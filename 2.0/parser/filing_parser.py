@@ -37,7 +37,7 @@ class MasterParserClass:
     insider_trans_filing_types = [ '4', '4/a' ]
 
     tidy_df_types = [settings.FILING_INFO_TABLE, settings.NAMED_SECTIONS_TABLE, settings.EXHIBITS_TABLE, settings.PDF_SECTIONS_TABLE]
-    beneficial_owner_df_types = [settings.FILING_INFO_TABLE, settings.NAMED_SECTIONS_TABLE, settings.SUBJECT_COS_TABLE, settings.EXHIBITS_TABLE]
+    beneficial_owner_df_types = [settings.FILING_INFO_TABLE, settings.NAMED_SECTIONS_TABLE, settings.SUBJECT_COS_TABLE, settings.EXHIBITS_TABLE] # TODO Grab table-like data
     hr_df_types = [settings.FILING_INFO_TABLE, settings.HR_MANAGERS_TABLE, settings.HOLDINGS_TABLE, settings.EXHIBITS_TABLE, settings.PDF_SECTIONS_TABLE]
     hr_notice_df_types = [settings.FILING_INFO_TABLE, settings.HR_MANAGERS_TABLE, settings.EXHIBITS_TABLE, settings.PDF_SECTIONS_TABLE]
     insider_df_types = [settings.FILING_INFO_TABLE, settings.EXHIBITS_TABLE, settings.PDF_SECTIONS_TABLE] # TODO finish
@@ -279,7 +279,9 @@ class MasterParserClass:
             'date': None,
             'accession_number': None,
             'cik': None,
-            'sic_code': None,
+            'sic_mjr_group_code': None,
+            'sic_ind_group_code': None,
+            'whole_sic_code': None,
             'sic_desc': None,
             'company_name': None,
             'report_period': None,
@@ -303,7 +305,7 @@ class MasterParserClass:
         required_patterns = {
             'accession_number': r'accession number:\s+([^\n]+)',
             'type': r'form type:\s+([^\n]+)',
-            'date': r'filed as of date:\s+(\d{8})'
+            'date': r'filed as of date:\s+(\d{8})' ######################################################################################### TODO Format as actual date!
             # (CIK + SIC will be grabbed later on. If they cannot be found, xxxxxxxxxx and xxxx will be used, respectively, for unknowns)
         }
 
@@ -389,10 +391,16 @@ class MasterParserClass:
 
                     if match:
                         filing_info['sic_desc'] = match.group('sic_description').strip()
-                        filing_info['sic_code'] = match.group('sic_code').strip()
+                        filing_info['whole_sic_code'] = match.group('sic_code').strip()
+                        filing_info['sic_div_code'] = filing_info['whole_sic_code'][0]
+                        filing_info['sic_mjr_group_code'] = filing_info['whole_sic_code'][:2]
+                        filing_info['sic_ind_group_code'] = filing_info['whole_sic_code'][:3]
                     else:
                         filing_info['sic_desc'] = None
-                        filing_info['sic_code'] = 'XXXX'
+                        filing_info['whole_sic_code'] = 0000
+                        filing_info['sic_div_code'] = 0
+                        filing_info['sic_mjr_group_code'] = 00
+                        filing_info['sic_ind_group_code'] = 000
                         logging.warning('Failed to parse sic_code or sic_desc')
                 
                 else:
@@ -400,10 +408,12 @@ class MasterParserClass:
             else:
                 logging.warning(f'Header field not found: {key}')
                 if key == 'cik':
-                    filing_info[key] = 'XXXXXXXXXX'
+                    filing_info[key] = 0000000000
                 elif key == 'sic_whole':
                     filing_info['sic_desc'] = None
-                    filing_info['sic_code'] = 'XXXX'
+                    filing_info['whole_sic_code'] = 0000
+                    filing_info['sic_mjr_group_code'] = 00
+                    filing_info['sic_ind_group_code'] = 000
 
         # Lastly, grab any former company names
         former_name_pattern = r"\s*FORMER COMPANY:\s*FORMER CONFORMED NAME:\s*(?P<former_name>.+?)\s*DATE OF NAME CHANGE:\s*(?P<date_of_change>\d{8})"
@@ -1665,7 +1675,7 @@ class MasterParserClass:
         
     def parse_hr_managers(self):
         '''
-        Parses the primary document XML content of a 13F-HR filing.
+        Parses the primary document XML content of a 13F filing.
 
         Returns a dataframe with one row per reported manager, with columns for various filing level fields and ID.
         '''

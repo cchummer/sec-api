@@ -60,7 +60,7 @@ services:
   ollama:
     build:
       context: .
-      dockerfile: Dockerfile.ollama 
+      #dockerfile: Dockerfile.ollama 
     ports:
       - "11434:11434"
     volumes:
@@ -88,12 +88,12 @@ services:
   ollama-init:
     build:
       context: .
-      dockerfile: Dockerfile.ollama # Custom image, just has curl installed, for our startup script mainly
-    entrypoint: ["/bin/bash", "-c"]
-    command: "/app/ollama_startup.sh"
-    depends_on:
-      ollama:
-        condition: service_healthy
+      #dockerfile: Dockerfile.ollama # Custom image, just has curl installed, for our startup script mainly
+    #entrypoint: ["/bin/bash", "-c"]
+    #command: "/app/ollama_startup.sh"
+    #depends_on:
+    #  ollama:
+    #    condition: service_healthy
     volumes:
       - ollama_data:/root/.ollama
     environment:
@@ -116,7 +116,7 @@ services:
       gunicorn
       --bind :8000
       --workers 1
-      --timeout 300
+      --timeout 490
       --chdir /code/flask_app
       -c /code/flask_app/gunicorn_config.py
       wsgi:app
@@ -129,10 +129,10 @@ services:
         condition: service_healthy
       prefect-init:
         condition: service_healthy # TODO *See above note about considering service_completed_successfully*
-      ollama:
-        condition: service_healthy
-      ollama-init:
-        condition: service_completed_successfully # Or consider using healthcheck file for ollama-init also... would make them all service_healthy 
+      #ollama:
+        #condition: service_healthy
+      #ollama-init:
+        #condition: service_completed_successfully # Or consider using healthcheck file for ollama-init also... would make them all service_healthy 
     environment:
       PREFECT_API_URL: http://prefect-server:4200/api # TODO: Consider also passing flow_name since we use python lib anyways, then don't have to define flow_name again in config for python. Same for worker + scheduler...
       #DATABASE_URL: postgresql+psycopg2://myuser:mypassword@db:5432/mydatabase # <- picks this up from python config

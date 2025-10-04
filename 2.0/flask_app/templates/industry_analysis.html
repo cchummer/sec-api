@@ -1,0 +1,46 @@
+{% extends "main.html" %}
+
+{% block content %}
+<main>
+    <!-- Summary of parsed filings in currently selected timeframe, pulled from SQL DB -->
+    <div id="parsed-filings-section" class="filings-summary-section">
+        <h2>{{ level | title }} Analysis: <strong>{{ filing_type | title }} filings {{ timeframe | title }} of {{ anchor_date }}</strong></h2>
+        <p>Parsed Filings in Current View: <strong>{{ current_count }}</strong> (Total in DB: {{ sql_summary.total_filings_parsed }})</p>
+
+        <!--Flexbox for summary counts-->
+        <div class="summary-section">        
+            <!--Counts by date chart will be rendered here-->
+            <div class="summary-column">
+                <h3>Filings by: 
+                    <form action="{{ url_for('dashboard.home') }}" method="GET">
+                        <input type="hidden" name="anchor_date" value="{{ anchor_date }}">
+                        <input type="hidden" name="filing_type" value="{{ filing_type }}">
+                        <select name="timeframe">
+                            <option value="day" {% if timeframe == "day" %}selected{% endif %}>Day</option>
+                            <option value="week" {% if timeframe == "week" %}selected{% endif %}>Week</option>
+                            <option value="month" {% if timeframe == "month" %}selected{% endif %}>Month</option>
+                            <option value="quarter" {% if timeframe == "quarter" %}selected{% endif %}>Quarter</option>
+                            <option value="year" {% if timeframe == "year" %}selected{% endif %}>Year</option>
+                        </select>
+                        <button type="submit">Update</button>
+                    </form>
+                </h3>
+                <div class="chart-wrapper">
+                    <canvas id="filingsDateChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Filings by Type -->
+            <div class="summary-column">
+                <h3>Filings by Type</h3>
+                <p>Currently selected type: <strong>{{ filing_type }}</strong></p>
+                <button class="filter-options" onclick="handleTypeBarClick('all')">
+                    Reset Filter
+                </button>
+                <div class="chart-wrapper">
+                    <canvas id="typesChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>

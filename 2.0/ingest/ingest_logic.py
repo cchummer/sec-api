@@ -1,5 +1,6 @@
 import logging
 import json
+import pandas as pd
 from sqlalchemy.dialects.postgresql import insert
 
 from db_models.filing_info import FilingInfo
@@ -30,6 +31,11 @@ def serialize_nonbasic_df_columns(df):
         '''
         Helper function to convert lists/dicts to JSON strings for SQL storage
         '''
+
+        # Convert YYYYMMDD date string into date object
+        if 'date' in df.columns:
+            df['date'] = pd.to_datetime(df["date"], format="%Y%m%d").dt.date
+
         for col in df.columns:
             if df[col].apply(lambda x: isinstance(x, (list, dict))).any():
                 df[col] = df[col].apply(lambda x: json.dumps(x) if isinstance(x, (list, dict)) else x)

@@ -8,7 +8,7 @@ import config.settings as settings
 TEXT_TABLE_RELATIONS = settings.TEXT_TYPE_TABLES
 
 # Define embedding model
-model = SentenceTransformer('all-MiniLM-L6-v2')
+model = SentenceTransformer(settings.DEFAULT_EMBEDDING_MODEL)
 
 def _rebuild_ivfflat_index(connection, table_name):
     '''Internal: Optimized IVFFlat index rebuild'''

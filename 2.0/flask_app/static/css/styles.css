@@ -1,0 +1,870 @@
+/* General Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    color: #333;
+    line-height: 1.6;
+    text-align: center;
+    padding: 20px;
+}
+
+.content {
+    display: none;
+    margin-left: 20px;
+    background-color: #F4F4F4;
+    border-radius: 8px;
+    padding: 5px;
+}
+
+.content ul {
+    list-style-type: none;
+    margin: 0;
+    padding: 5px;
+}
+
+/* Container */
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    background: #fff;
+    padding: 20px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+}
+
+/* Header */
+.header {
+    background: #007bff;
+    color: #fff;
+    padding: 20px;
+    font-size: 1.5em;
+    border-radius: 8px 8px 0 0;
+}
+
+/* Navigation */
+.nav-bar {
+    display: flex;
+    justify-content: left;
+    list-style: none;
+    padding: 0;
+    margin: 20px 0;
+    background-color: #007BFF;
+    border-bottom: 2px solid #ccc;
+}
+.nav-bar li {
+    margin: 0 10px;
+}
+.nav-bar a {
+    text-decoration: none;
+    padding: 10px 15px;
+    color: white;
+    border-radius: 5px;
+    transition: background-color 0.3s, color 0.3s;
+}
+.nav-bar a:hover {
+    background-color: #1abc9c;
+    color: white;
+}
+
+/* Industry Nav */
+.industry-nav {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+}
+.collapsible-navmenu {
+    background-color: #007BFF;
+    color: white;
+    padding: 10px;
+    font-size: 16px;
+    border: none;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+}
+.collapsible-navmenu:hover {
+    background-color: #1abc9c;
+    color: white;
+}
+
+/* Buttons */
+.button {
+    display: inline-block;
+    background: #007bff;
+    color: white;
+    padding: 10px 20px;
+    margin: 10px;
+    border: none;
+    cursor: pointer;
+    border-radius: 5px;
+    text-decoration: none;
+    transition: background 0.3s;
+}
+
+.button:hover {
+    background: #0056b3;
+}
+
+button.collapsible-list {
+    background: none;
+    border: none;
+    color: #007bff;
+    cursor: pointer;
+    padding: 5px;
+    font-size: inherit;
+    font-family: inherit;
+    text-decoration: underline;
+    display: inline-block;
+    margin: 5px 0;
+}
+
+button.collapsible-list:hover {
+    color: #0056b3;
+}
+
+button.collapsible-list:focus {
+    outline: none;
+}
+
+/* Forms */
+input, textarea {
+    width: 100%;
+    padding: 10px;
+    margin: 10px 0;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+/* Footer */
+.footer {
+    margin-top: 20px;
+    padding: 10px;
+    background: #333;
+    color: white;
+    border-radius: 8px;
+}
+
+/* Sections + Column */
+.summary-section {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    width: 100%;
+    max-width: none;
+}
+.summary-column {
+    flex: 1;
+    border: 1px solid #ddd;
+    padding: 10px;
+    border-radius: 5px;
+}
+
+/* Accordion */
+.accordion {
+    background: none;
+    border: none;
+    color: #007bff;
+    cursor: pointer;
+    padding: 5px;
+    font-size: 0.9em;
+    font-family: inherit;
+    text-decoration: underline;
+    display: inline-block;
+    margin-left: 10px;
+}
+
+.accordion:hover {
+    color: #0056b3;
+}
+
+.chart-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 30px;
+    padding: 20px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+/* Enhanced Industry Section Styles */
+.industry-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 5px;
+}
+
+.explore-btn {
+    background: #007BFF;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.explore-btn:hover {
+    background: #1abc9c;
+}
+
+/* SIC Explorer Modal Styles */
+.sic-modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    overflow: auto;
+}
+
+.sic-modal-content {
+    background-color: white;
+    margin: 2% auto;
+    padding: 20px;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 1000px;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.sic-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+}
+
+.close-modal {
+    color: #aaa;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.close-modal:hover {
+    color: #000;
+}
+
+/* Charting style */
+.chart-wrapper {
+    position: relative;
+    height: 300px;
+    width: 100%;
+    margin-top: 15px;
+}
+
+/* Treemap specific styles */
+.selected-industry-div {
+    text-align: center;
+    color: #666;
+    font-style: italic;
+    margin-bottom: 15px;
+}
+
+.no-selection {
+    color: #999;
+}
+
+/* ============================================
+   INDUSTRY EXPLORER - CLEANED UP CSS
+   ============================================ */
+
+/* Industry Explorer Section - Full Width */
+.industry-explorer-section {
+    width: 100%;
+    max-width: none;
+    padding: 20px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    box-sizing: border-box;
+}
+
+/* Industry Explorer Header */
+.industry-explorer-header {
+    text-align: center;
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #e0e0e0;
+    width: 100%;
+}
+
+.industry-explorer-header h2 {
+    color: #007bff;
+    margin-bottom: 10px;
+    font-size: 28px;
+}
+
+.industry-explorer-header p {
+    color: #666;
+    margin-bottom: 20px;
+    font-size: 16px;
+}
+
+.explorer-stats {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.stat-box {
+    text-align: center;
+    padding: 15px 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    min-width: 120px;
+    border: 2px solid #e9ecef;
+    flex-shrink: 0;
+}
+
+.stat-number {
+    display: block;
+    font-size: 24px;
+    font-weight: bold;
+    color: #007bff;
+}
+
+.stat-label {
+    display: block;
+    font-size: 12px;
+    color: #666;
+    text-transform: uppercase;
+    margin-top: 5px;
+    letter-spacing: 0.5px;
+}
+
+/* Search Section */
+.search-section {
+    margin-bottom: 30px;
+    width: 100%;
+}
+
+.search-section input {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    font-size: 16px;
+    transition: border-color 0.3s;
+    box-sizing: border-box;
+}
+
+.search-section input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
+}
+
+/* Industry Hierarchy Container */
+.industry-hierarchy {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+}
+
+/* ============================================
+   DIVISION LEVEL (2-digit SIC codes) - TOP LEVEL
+   ============================================ */
+
+.division-group {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: white;
+    width: 100%;
+}
+
+.division-header {
+    background: #007bff;
+    color: white;
+    padding: 0;
+    cursor: default;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background-color 0.3s;
+    font-weight: 600;
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.division-header-content {
+    flex-grow: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.division-header-content:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.division-header.active .division-header-content {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.division-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-grow: 1;
+}
+
+.division-count {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.division-actions {
+    padding: 10px 15px;
+    display: flex;
+    align-items: center;
+    border-left: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.division-content {
+    display: none;
+    background: #f8f9fa;
+    padding: 0;
+    width: 100%;
+}
+
+/* ============================================
+   MAJOR GROUP LEVEL (3-digit SIC codes) - MIDDLE LEVEL
+   ============================================ */
+
+.major-group {
+    border-bottom: 1px solid #e0e0e0;
+    width: 100%;
+}
+
+.major-group:last-child {
+    border-bottom: none;
+}
+
+.major-group-header {
+    background: #e3f2fd;
+    padding: 0;
+    cursor: default;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background-color 0.3s;
+    font-weight: 500;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.major-group-header-content {
+    flex-grow: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.major-group-header-content:hover {
+    background: rgba(25, 118, 210, 0.1);
+}
+
+.major-group-header.active .major-group-header-content {
+    background: rgba(25, 118, 210, 0.1);
+}
+
+.major-group-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #1976d2;
+    flex-grow: 1;
+}
+
+.major-group-count {
+    background: #2196f3;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.major-group-actions {
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    border-left: 1px solid rgba(25, 118, 210, 0.2);
+}
+
+.major-group-content {
+    display: none;
+    padding: 0;
+    background: white;
+    width: 100%;
+}
+
+/* ============================================
+   INDUSTRY LEVEL (4-digit SIC codes) - BOTTOM LEVEL
+   ============================================ */
+
+.industry-item {
+    background: white;
+    border-bottom: 1px solid #f0f0f0;
+    width: 100%;
+}
+
+.industry-item:last-child {
+    border-bottom: none;
+}
+
+.industry-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.industry-link {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    text-decoration: none;
+    color: #333;
+    transition: background-color 0.3s;
+    flex-grow: 1;
+    box-sizing: border-box;
+}
+
+.industry-link:hover {
+    background: #f0f8ff;
+    text-decoration: none;
+    color: #333;
+}
+
+.industry-info {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-grow: 1;
+    min-width: 0;
+}
+
+.sic-code {
+    font-weight: bold;
+    color: #007bff;
+    min-width: 60px;
+    font-family: 'Courier New', monospace;
+    flex-shrink: 0;
+}
+
+.industry-desc {
+    color: #555;
+    flex-grow: 1;
+    word-wrap: break-word;
+}
+
+.industry-count {
+    background: #28a745;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.industry-actions {
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    border-left: 1px solid #f0f0f0;
+}
+
+/* ============================================
+   EXPAND ICONS
+   ============================================ */
+
+.expand-icon {
+    transition: transform 0.3s;
+    font-size: 18px;
+    font-weight: bold;
+    user-select: none;
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+}
+
+.expand-icon.expanded {
+    transform: rotate(90deg);
+}
+
+/* ============================================
+   ANALYZE BUTTONS
+   ============================================ */
+
+.analyze-btn {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 4px rgba(40, 167, 69, 0.2);
+}
+
+.analyze-btn:hover {
+    background: linear-gradient(135deg, #218838 0%, #1aa179 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
+}
+
+.analyze-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(40, 167, 69, 0.2);
+}
+
+/* Button variants for different levels */
+.division-analyze {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2);
+}
+
+.division-analyze:hover {
+    background: linear-gradient(135deg, #0056b3 0%, #004494 100%);
+    box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
+}
+
+.major-group-analyze {
+    background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+    box-shadow: 0 2px 4px rgba(23, 162, 184, 0.2);
+}
+
+.major-group-analyze:hover {
+    background: linear-gradient(135deg, #138496 0%, #0f6674 100%);
+    box-shadow: 0 4px 8px rgba(23, 162, 184, 0.3);
+}
+
+.industry-analyze {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    box-shadow: 0 2px 4px rgba(40, 167, 69, 0.2);
+}
+
+.industry-analyze:hover {
+    background: linear-gradient(135deg, #218838 0%, #1aa179 100%);
+    box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
+}
+
+.analyze-icon {
+    font-size: 14px;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.2));
+}
+
+/* Loading state for buttons */
+.analyze-btn.loading {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.analyze-btn.loading::after {
+    content: '';
+    width: 12px;
+    height: 12px;
+    border: 2px solid transparent;
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-left: 4px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* ============================================
+   NO RESULTS MESSAGE
+   ============================================ */
+
+.no-results {
+    text-align: center;
+    color: #666;
+    font-style: italic;
+    padding: 40px 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-top: 20px;
+    border: 2px dashed #dee2e6;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.no-results p {
+    margin: 0;
+    font-size: 16px;
+}
+
+/* Legacy filing count for backward compatibility */
+.filing-count {
+    background: #1abc9c;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+/* ============================================
+   RESPONSIVE DESIGN
+   ============================================ */
+
+@media (max-width: 768px) {
+    .explorer-stats {
+        gap: 20px;
+    }
+    
+    .stat-box {
+        min-width: 100px;
+        padding: 10px 15px;
+    }
+    
+    .division-header-content, .major-group-header-content {
+        padding: 10px 15px;
+    }
+    
+    .division-actions, .major-group-actions, .industry-actions {
+        padding: 6px 10px;
+    }
+    
+    .analyze-btn {
+        padding: 4px 8px;
+        font-size: 11px;
+        gap: 2px;
+    }
+    
+    .analyze-icon {
+        font-size: 12px;
+    }
+    
+    .industry-info {
+        gap: 10px;
+    }
+    
+    .sic-code {
+        min-width: 50px;
+    }
+    
+    .summary-section {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .summary-column {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .industry-explorer-section {
+        padding: 15px;
+    }
+    
+    .industry-content {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .industry-link {
+        padding: 10px 15px;
+    }
+    
+    .industry-actions {
+        padding: 8px 15px;
+        border-left: none;
+        border-top: 1px solid #f0f0f0;
+        justify-content: center;
+    }
+    
+    .analyze-btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .industry-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+    }
+    
+    .explorer-stats {
+        flex-direction: column;
+        gap: 15px;
+        align-items: stretch;
+    }
+    
+    .stat-box {
+        width: 100%;
+        margin: 0;
+    }
+    
+    /* Stack division and major group actions on mobile */
+    .division-header, .major-group-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .division-actions, .major-group-actions {
+        border-left: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.2);
+        justify-content: center;
+    }
+    
+    body {
+        padding: 10px;
+    }
+    
+    .container {
+        padding: 15px;
+    }
+}

@@ -8,7 +8,7 @@ import config.settings as settings
 from conn.db_engine import engine  
 
 class VectorSearch:
-    def __init__(self, model_name: str = 'all-MiniLM-L6-v2'):
+    def __init__(self, model_name: str = settings.DEFAULT_EMBEDDING_MODEL):
         self.model_name = model_name
         self.model = None
         self._initialize()
@@ -36,7 +36,7 @@ class VectorSearch:
         else:
             return "s.section_name"
 
-    def search_sections(self, query: str, table_name: str, embed_table_name: str, top_k: int = 5, threshold: float = 0.5) -> List[Dict]:
+    def search_sections(self, query: str, table_name: str, embed_table_name: str, top_k: int = 5, threshold: float = 0.25) -> List[Dict]: # TESTING lowering threshhold from 0.5
         try:
             logging.info(f'Searching {table_name} for text sections most relevant to query: {query}\nMinimum similarity threshold: {threshold}.')
             query_embedding = self.get_embedding(query)
@@ -72,7 +72,7 @@ class VectorSearch:
                 })
 
                 rows = result.fetchall()
-                logging.info(f'Found {len(rows)} relevant text sections.')
+                logging.info(f'Found {len(rows)} relevant {table_name} text sections.')
 
             return [{
                 'section_id': r.section_id,

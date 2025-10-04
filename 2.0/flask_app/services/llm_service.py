@@ -4,6 +4,7 @@ import logging
 from typing import List, Dict
 
 from .vector_search import VectorSearch
+from .summarization import simple_summarize_text_section
 import config.settings as settings
 
 class RAGService:
@@ -22,7 +23,7 @@ class RAGService:
                     "prompt": f"Use the following SEC filing excerpts to answer the user's question\n\n: {context}\n\nQuestion: {prompt}\nAnswer:",
                     "stream": False
                 },
-                timeout=300
+                timeout=360
             )
             logging.info(f'Sent ollama query.')
             return response.json().get("response", "No answer generated")
@@ -39,15 +40,14 @@ class RAGService:
             logging.info(f'Found top text section matches for user query in {text_table}.')
         
         top_results = sorted(results, key=lambda x: x['score'], reverse=True)[:5]
-
-        # TODO: CONSIDER SUMMARIZATION HERE! ~6-8k token limit
         
         # 2. Generate context string
         context = "\n\n".join(
-            f"Filer: {res['company_name']} ({res['filing_date']})\n"
+            f"Filer/filing company: {res['company_name']} ({res['filing_date']})\n"
             f"Filing type: {res['filing_type']}\n"
             f"Section name: {res['section_name']}\n"
-            f"Content: {res['text'][:1000]}...\n" # TODO summarize instead of truncate
+            f"Content: {simple_summarize_text_section(res['text'])}\n" # TESTING SUMMARIZATION
+            #f"Content: {res['text'][:1000]}...\n" 
             f"Relevance: {res['score']:.2f}"
             for res in top_results
         )

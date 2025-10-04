@@ -36,5 +36,5 @@ class ExhibitEmbeddings(Base):
     
     # Metadata about the embedding (optional but useful)
     #section_name = Column(String(255), nullable=True)  # e.g., "Management Discussion"
-    embedding_model = Column(String(50), default='all-MiniLM-L6-v2')
+    embedding_model = Column(String(50), default=settings.DEFAULT_EMBEDDING_MODEL)
     created_at = Column(DateTime, server_default=func.now())

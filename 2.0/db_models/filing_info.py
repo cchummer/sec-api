@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, JSON, Text
+from sqlalchemy import Column, Integer, String, JSON, Text, Date
 from sqlalchemy.orm import relationship
 from .base import Base
 import config.settings as settings
@@ -13,15 +13,18 @@ from .holdings import HoldingsReportHoldings
 from .named_section_embds import NamedSectionEmbeddings
 from .toc_section_embds import HtmlSectionEmbeddings
 from .pdf_section_embds import PdfSectionEmbeddings
+from .exhibit_embds import ExhibitEmbeddings
 
 class FilingInfo(Base):
     __tablename__ = settings.FILING_INFO_TABLE
 
     accession_number = Column(String(20), primary_key=True)
     type = Column(String(20))
-    date = Column(String(8))  # stored as YYYYMMDD
+    date = Column(Date)  
     cik = Column(String(10), nullable=False)
-    sic_code = Column(String(10))
+    whole_sic_code = Column(String(4))
+    sic_mjr_group_code = Column(String(2))
+    sic_ind_group_code = Column(String(3))
     sic_desc = Column(String(255))
     company_name = Column(String(255))
     report_period = Column(String(8))
@@ -43,3 +46,4 @@ class FilingInfo(Base):
     named_section_embeddings = relationship(NamedSectionEmbeddings, back_populates=settings.FILING_INFO_TABLE, cascade='all, delete-orphan')
     toc_section_embeddings = relationship(HtmlSectionEmbeddings, back_populates=settings.FILING_INFO_TABLE, cascade='all, delete-orphan')
     pdf_section_embeddings = relationship(PdfSectionEmbeddings, back_populates=settings.FILING_INFO_TABLE, cascade='all, delete-orphan')
+    exhibitis_embeddings = relationship(ExhibitEmbeddings, back_populates=settings.FILING_INFO_TABLE, cascade='all, delete-orphan')

@@ -42,3 +42,9 @@ TEXT_TYPE_TABLES = {
     }
 
 PREFECT_FLOW_NAME = 'full_process_day_flow'
+
+DEFAULT_TOKENIZER_MODEL = 'ProsusAI/finbert'
+DEFAULT_SUMMARIZER_MODEL = 'facebook/bart-large-cnn'
+DEFAULT_EMBEDDING_MODEL = 'all-MiniLM-L6-v2'
+
+FLASK_LOGIN_PASSCODE = 'sec123'

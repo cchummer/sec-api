@@ -1,0 +1,385 @@
+{% extends "main.html" %}
+
+{% block content %}
+<main>
+    <!-- Summary of parsed filings in currently selected timeframe, pulled from SQL DB -->
+    <div id="parsed-filings-section" class="filings-summary-section">
+        <h2>Current View: <strong>{{ filing_type | title}} Filings {{ timeframe | title }} of {{ anchor_date }}</strong></h2>
+        <p>Parsed Filings in Current View: <strong>{{ current_count }}</strong> (Total in DB: {{ sql_summary.total_filings_parsed }})</p>
+
+        <!--Flexbox for summary counts-->
+        <div class="summary-section">        
+            <!--Counts by date chart will be rendered here-->
+            <div class="summary-column">
+                <h3>Filings by: 
+                    <form action="{{ url_for('dashboard.home') }}" method="GET">
+                        <input type="hidden" name="anchor_date" value="{{ anchor_date }}">
+                        <input type="hidden" name="filing_type" value="{{ filing_type }}">
+                        <select name="timeframe">
+                            <option value="day" {% if timeframe == "day" %}selected{% endif %}>Day</option>
+                            <option value="week" {% if timeframe == "week" %}selected{% endif %}>Week</option>
+                            <option value="month" {% if timeframe == "month" %}selected{% endif %}>Month</option>
+                            <option value="quarter" {% if timeframe == "quarter" %}selected{% endif %}>Quarter</option>
+                            <option value="year" {% if timeframe == "year" %}selected{% endif %}>Year</option>
+                        </select>
+                        <button type="submit">Update</button>
+                    </form>
+                </h3>
+                <div class="chart-wrapper">
+                    <canvas id="filingsDateChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Filings by Type -->
+            <div class="summary-column">
+                <h3>Filings by Type</h3>
+                <p>Currently selected type: <strong>{{ filing_type }}</strong></p>
+                <button class="filter-options" onclick="handleTypeBarClick('all')">
+                    Reset Filter
+                </button>
+                <div class="chart-wrapper">
+                    <canvas id="typesChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Treemap Charts Section -->
+        <div class='summary-section'>
+            <!-- Industry Divisions Treemap -->
+            <div class="summary-column">
+                <h3>Industry Divisions</h3>
+                <div class="chart-wrapper">
+                    <canvas id="divisionsTreemap"></canvas>
+                </div>
+            </div>
+            <!-- Industry Major Groups Treemap -->
+            <div class="summary-column">
+                <h3>Major Industry Groups</h3>
+                <div class="selected-industry-div no-selection">
+                    Click a division to view its major groups
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="majorGroupsTreemap"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Updated Industry Explorer Section with Navigation Buttons -->
+        <div class='summary-section'>
+            <div class="industry-explorer-section">
+                <div class="industry-explorer-header">
+                    <h2>Industry Explorer</h2>
+                    <p>Browse filings by industry hierarchy for <strong>{{ timeframe | title }} of {{ anchor_date }}</strong></p>
+                    <div class="explorer-stats">
+                        <div class="stat-box">
+                            <span class="stat-number">{{ current_count }}</span>
+                            <span class="stat-label">Total Filings</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-number">{{ total_industries }}</span>
+                            <span class="stat-label">Industries</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-number">{{ total_major_groups }}</span>
+                            <span class="stat-label">Major Groups</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-number">{{ division_count }}</span>
+                            <span class="stat-label">Divisions</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="search-section">
+                    <input type="text" id="industrySearch" placeholder="Search industries, SIC codes, or descriptions..." oninput="filterIndustries()">
+                </div>
+
+                <div class="industry-hierarchy">
+                    {% for division_code, division_data in sic_hierarchy.items() %}
+                    <div class="division-group" data-search-text="{{ division_code }} {{ division_data.name }}">
+                        <div class="division-header">
+                            <div class="division-header-content" onclick="toggleDivision('{{ division_code }}')">
+                                <div class="division-title">
+                                    <span class="expand-icon" id="icon-{{ division_code }}">▶</span>
+                                    <strong>{{ division_code }}</strong> - {{ division_data.name }}
+                                </div>
+                                <div class="division-count">{{ division_data.total_count }} filings</div>
+                            </div>
+                            <div class="division-actions">
+                                <button class="analyze-btn division-analyze" 
+                                        onclick="navigateToIndustryAnalysis('division', '{{ division_code }}', '{{ division_data.name }}')"
+                                        title="Analyze Division {{ division_code }}">
+                                    <span class="analyze-icon">📊</span>
+                                    Analyze
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="division-content" id="content-{{ division_code }}">
+                            {% for major_code, major_data in division_data.groups.items() %}
+                            <div class="major-group" data-search-text="{{ major_code }} {{ major_data.name }}">
+                                <div class="major-group-header">
+                                    <div class="major-group-header-content" onclick="toggleMajorGroup('{{ major_code }}')">
+                                        <div class="major-group-title">
+                                            <span class="expand-icon" id="major-icon-{{ major_code }}">▶</span>
+                                            <strong>{{ major_code }}</strong> - {{ major_data.name }}
+                                        </div>
+                                        <div class="major-group-count">{{ major_data.total_count }} filings</div>
+                                    </div>
+                                    <div class="major-group-actions">
+                                        <button class="analyze-btn major-group-analyze" 
+                                                onclick="navigateToIndustryAnalysis('major_group', '{{ major_code }}', '{{ major_data.name }}')"
+                                                title="Analyze Major Group {{ major_code }}">
+                                            <span class="analyze-icon">📊</span>
+                                            Analyze
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div class="major-group-content" id="major-content-{{ major_code }}">
+                                    {% for sic_code, industry_data in major_data.industries.items() %}
+                                    <div class="industry-item" data-search-text="{{ sic_code }} {{ industry_data.desc }}">
+                                        <div class="industry-content">
+                                            <div class="industry-link">
+                                                <div class="industry-info">
+                                                    <span class="sic-code">{{ sic_code }}</span>
+                                                    <span class="industry-desc">{{ industry_data.desc }}</span>
+                                                </div>
+                                                <div class="industry-count">{{ industry_data.count }} filings</div>
+                                            </div>
+                                            <div class="industry-actions">
+                                                <button class="analyze-btn industry-analyze" 
+                                                        onclick="navigateToIndustryAnalysis('industry', '{{ sic_code }}', '{{ industry_data.desc }}')"
+                                                        title="Analyze Industry {{ sic_code }}">
+                                                    <span class="analyze-icon">📊</span>
+                                                    Analyze
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div id="no-results" class="no-results" style="display: none;">
+                    <p>No industries match your search criteria.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Topic Analysis Section (keeping your existing section) -->
+        <div class="summary-section">
+            <div class="header">
+                <h1>SEC Filing Topic Analysis</h1>
+                <p>Explore topics and themes across SEC filings using advanced NLP analysis</p>
+            </div>
+            <!-- Trying topic analysis section + charts -->
+            <div class="filter-panel">
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="start-date">Start Date:</label>
+                        <input type="date" id="start-date" required>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="end-date">End Date:</label>
+                        <input type="date" id="end-date" required>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>Filing Types:</label>
+                        <div class="checkbox-group">
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="filing-8k" value="8-K" checked>
+                                <label for="filing-8k">8-K</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="filing-10k" value="10-K" checked>
+                                <label for="filing-10k">10-K</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="filing-10q" value="10-Q" checked>
+                                <label for="filing-10q">10-Q</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="filing-s1" value="S-1">
+                                <label for="filing-s1">S-1</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="filing-def14a" value="DEF 14A">
+                                <label for="filing-def14a">DEF 14A</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <button class="generate-btn" onclick="generateTopicAnalysis()">
+                            Generate Analysis
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <h3>Performing Topic Analysis...</h3>
+                <p>This may take a few minutes depending on the data size.</p>
+            </div>
+            
+            <div class="error-message" id="error-message" style="display: none;"></div>
+            
+            <div class="results-container" id="results">
+                <div class="chart-row">
+                    <div class="chart-container hierarchy-container">
+                        <h3>Topic Hierarchy</h3>
+                        <div id="topic-hierarchy" class="topic-tree"></div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h3>Intertopic Distance Map</h3>
+                        <div id="intertopic-chart"></div>
+                    </div>
+                </div>
+                
+                <div class="chart-row">
+                    <div class="chart-container">
+                        <h3>Document Distribution Over Time</h3>
+                        <div id="document-chart"></div>
+                    </div>
+                </div>
+                
+                <div class="topic-details" id="topic-details" style="display: none;">
+                    <h3>Topic Details</h3>
+                    <div id="topic-details-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Get + set some vars we'll need
+    const timeframe = "{{ timeframe }}";
+    const parsedByDate = {{ sql_summary.parsed_by_date | tojson }};
+    const parsedByType = {{ sql_summary.parsed_by_type | tojson }};
+    const parsedByIndustry = {{ sql_summary.parsed_by_industry | tojson }};
+    // Put in [{ label: X, value: X }] format for bar chart JS funcs
+    const parsedByDateAdapted = parsedByDate.map(item => ({
+        label: item.date,
+        value: item.count
+    }));
+    const parsedByTypeAdapted = parsedByType.map(item => ({
+        label: item.type,
+        value: item.count
+    }));
+
+    const currentDateHighlight = "{{ anchor_date }}";
+
+    // Global variables for treemap charts
+    let majorGroupsTreemapChart = null;
+    let divisionsTreemapChart = null;
+    //let currentSelectedDivision = null;
+
+    // Handle bar chart clicks
+    function handleTimeBarClick(date) {
+        // Redirect page with the clicked date as anchor
+        const params = new URLSearchParams(window.location.search);
+        params.set('timeframe', timeframe);
+        params.set('anchor_date', date);
+        window.location.search = params.toString();
+    }
+    function handleTypeBarClick(type) {
+        // Redirect page with the clicked type as a filter
+        const params = new URLSearchParams(window.location.search);
+        params.set('filing_type', type);
+        window.location.search = params.toString();
+    }
+
+    // Handle nav to industry page
+    function navigateToIndustryAnalysis(type, code, name) {
+        if (event) event.stopPropagation();
+        console.log('Navigating to industry analysis page.')
+        console.log(type)
+        console.log(code)
+        const params = new URLSearchParams(window.location.search);
+        const queryParams = new URLSearchParams({
+            timeframe: params.get('timeframe') || 'month',
+            anchor_date: params.get('anchor_date') || new Date().toISOString().split('T')[0],
+            filing_type: params.get('filing_type') || 'all'
+        });
+        
+        // Simple URL construction - matches your Flask routes exactly
+        const urlMap = {
+            'division': `/industry-analysis/division/${code}`,
+            'major_group': `/industry-analysis/major-group/${code}`,
+            'industry': `/industry-analysis/industry/${code}`
+        };
+        
+        const url = `${urlMap[type]}?${queryParams.toString()}`;
+        window.location.href = url;
+    }
+
+    // Render date chart (vertical) (renderBarChart defined in scripts.js)
+    console.log('Rendering filings by date chart.')
+    renderBarChart(
+        'filingsDateChart', 
+        parsedByDateAdapted, 
+        false, 
+        'Filing Counts', 
+        currentDateHighlight,
+        (label) => formatDateLabel(label, timeframe),
+        handleTimeBarClick
+        );
+
+    // Filing type chart (horizontal)
+    console.log('Rendering filings by type chart.')
+    renderBarChart(
+        'typesChart',
+        parsedByTypeAdapted,
+        true,
+        'Filing Counts',
+        null,
+        null,
+        handleTypeBarClick
+    )
+
+    // Init treemaps
+    function initTreemapCharts() {
+        console.log('Initializing treemap charts')
+        // Use your actual sic_hierarchy data from the template
+        const sicHierarchy = {{ sic_hierarchy | tojson }};
+        initDivisionsTreemap(sicHierarchy);
+
+        // Initialize empty major group chart
+        initMajorGroupsTreemap(null);
+    }
+
+    // Call this after your existing chart initializations
+    // (Make sure to call this after the treemap plugin is loaded)
+    // Ran on page load 
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('In event listener')
+        
+        // Uncomment the following lines if you want all groups expanded by default
+        /*
+        const allMajorGroups = document.querySelectorAll('.major-group-header');
+        allMajorGroups.forEach(header => {
+            header.click();
+        });
+        */
+
+        initTreemapCharts();
+    });
+
+    // Topic analysis functions
+    
+</script>
+
+{% endblock %}
